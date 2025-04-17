@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase, Batch, checkSupabaseConnection } from '../utils/supabase';
-import { Play, Pause, Trash2, RefreshCw, Clock, CheckCircle, AlertCircle, AlertTriangle, List, Eye } from 'lucide-react'; // Added Eye icon
+import { Play, Pause, Trash2, RefreshCw, Clock, CheckCircle, AlertCircle, AlertTriangle, List, Eye } from 'lucide-react';
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import Spinner from '../components/ui/Spinner';
@@ -12,13 +12,18 @@ interface BatchesPageProps {
   onViewDetails: (batchId: string) => void; // Callback to navigate
 }
 
-const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => { // Accept prop
+// Define the webhook URL
+const JOB_WEBHOOK_URL = 'https://n8n-queue-2-n8n-webhook.mrt7ga.easypanel.host/webhook/job-consulta';
+
+const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
   const [batches, setBatches] = useState<Batch[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Loading batches list
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null); // For success feedback
   const [connectionError, setConnectionError] = useState<boolean>(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [batchToDeleteId, setBatchToDeleteId] = useState<string | null>(null);
+  const [startingJobId, setStartingJobId] = useState<string | null>(null); // Track which job is starting
 
   const { currentPage, totalPages, paginatedData, setPage } = usePagination(batches, 5);
 
@@ -26,9 +31,23 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => { // Acce
     fetchBatches();
   }, []);
 
+  // Clear success/error messages after a delay
+  useEffect(() => {
+    if (error || successMessage) {
+      const timer = setTimeout(() => {
+        setError(null);
+        setSuccessMessage(null);
+      }, 5000); // Clear after 5 seconds
+      return () => clearTimeout(timer);
+    }
+  }, [error, successMessage]);
+
+
   const fetchBatches = async () => {
     setIsLoading(true);
-    setError(null);
+    // Don't clear action errors immediately on refresh
+    // setError(null);
+    // setSuccessMessage(null);
     setConnectionError(false);
 
     try {
@@ -38,16 +57,16 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => { // Acce
         throw new Error('Não foi possível conectar ao banco de dados. Verifique sua conexão e tente novamente.');
       }
 
-      const { data, error } = await supabase
+      const { data, error: fetchError } = await supabase
         .from('batches')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        if (error.message.includes('relation "public.batches" does not exist')) {
+      if (fetchError) {
+        if (fetchError.message.includes('relation "public.batches" does not exist')) {
            setError('A tabela "batches" não foi encontrada no banco de dados. Verifique se as migrações foram executadas.');
         } else {
-          throw error;
+          throw fetchError;
         }
         setBatches([]);
       } else {
@@ -56,7 +75,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => { // Acce
 
     } catch (err: any) {
       console.error('Error fetching batches:', err);
-      if (!error) {
+      if (!error) { // Avoid overwriting specific errors
         setError(`Erro ao carregar os lotes: ${err.message || 'Por favor, tente novamente.'}`);
       }
     } finally {
@@ -64,10 +83,62 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => { // Acce
     }
   };
 
-  const handleStartBatch = async (id: string) => {
-    console.log('Start batch:', id);
-    setError('Funcionalidade de iniciar lote ainda não implementada.');
+  // --- Start Job Function ---
+  const handleStartJob = async (batchId: string) => {
+    setStartingJobId(batchId); // Set loading state for this specific batch
+    setError(null);
+    setSuccessMessage(null);
+
+    console.log(`Attempting to start job for batch: ${batchId}`);
+
+    try {
+      const response = await fetch(JOB_WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tipo: 'api',
+          batch_id: batchId,
+        }),
+      });
+
+      console.log('Webhook response status:', response.status);
+
+      if (!response.ok) {
+        // Attempt to read error details from response body
+        let errorBody = 'Erro desconhecido do webhook.';
+        try {
+            const body = await response.json();
+            errorBody = body.message || JSON.stringify(body);
+        } catch (e) {
+            // If body is not JSON or empty
+            errorBody = `Erro ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(`Falha ao chamar o webhook. ${errorBody}`);
+      }
+
+      // Optional: Read success response if needed
+      // const responseData = await response.json();
+      // console.log('Webhook success response:', responseData);
+
+      setSuccessMessage(`Tarefa para o lote ${batchId.substring(0, 8)}... iniciada com sucesso. O status será atualizado em breve.`);
+      // Note: We don't update the status locally here.
+      // The webhook should trigger the status update in the database.
+      // A subsequent fetchBatches() or real-time subscription will reflect the change.
+      // Optionally trigger a refresh after a short delay:
+      // setTimeout(fetchBatches, 2000);
+
+
+    } catch (err: any) {
+      console.error('Error starting job via webhook:', err);
+      setError(`Erro ao iniciar a tarefa: ${err.message}`);
+    } finally {
+      setStartingJobId(null); // Clear loading state for this batch
+    }
   };
+  // --- End Start Job Function ---
+
 
   const handlePauseBatch = async (id: string) => {
     console.log('Pause batch:', id);
@@ -82,6 +153,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => { // Acce
   const confirmDeleteBatch = async () => {
     if (!batchToDeleteId) return;
     setError(null);
+    setSuccessMessage(null);
     try {
       const { error: deleteError } = await supabase
         .from('batches')
@@ -90,6 +162,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => { // Acce
 
       if (deleteError) throw deleteError;
       setBatches(prevBatches => prevBatches.filter(batch => batch.id !== batchToDeleteId));
+      setSuccessMessage(`Lote ${batchToDeleteId.substring(0,8)}... excluído.`);
     } catch (err: any) {
       console.error('Error deleting batch:', err);
       setError(`Erro ao excluir o lote: ${err.message || 'Tente novamente.'}`);
@@ -106,34 +179,35 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => { // Acce
     let text = "Desconhecido";
 
     switch (status) {
-      case 'pending':
-        themeClasses = "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
+      case 'Pendente':
+        themeClasses = "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300 border border-yellow-300 dark:border-yellow-700";
         icon = <Clock className="h-3 w-3 mr-1" />;
         text = "Pendente";
         break;
-      case 'processing':
-        themeClasses = "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300";
+      case 'Em execução':
+        themeClasses = "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 border border-blue-300 dark:border-blue-700";
         icon = <RefreshCw className="h-3 w-3 mr-1 animate-spin" />;
-        text = "Processando";
+        text = "Em execução";
         break;
-      case 'completed':
-        themeClasses = "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
+      case 'Finalizado':
+        themeClasses = "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 border border-green-300 dark:border-green-700";
         icon = <CheckCircle className="h-3 w-3 mr-1" />;
-        text = "Concluído";
+        text = "Finalizado";
         break;
-      case 'paused':
-        themeClasses = "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
+      case 'Pausado':
+        themeClasses = "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600";
         icon = <Pause className="h-3 w-3 mr-1" />;
         text = "Pausado";
         break;
-      case 'error':
-        themeClasses = "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300";
+      case 'Erro':
+        themeClasses = "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300 border border-red-300 dark:border-red-700";
         icon = <AlertCircle className="h-3 w-3 mr-1" />;
         text = "Erro";
         break;
       default:
-        themeClasses = "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300";
+        themeClasses = "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600";
         icon = <AlertTriangle className="h-3 w-3 mr-1" />;
+        text = status; // Display unknown status directly
         break;
     }
     return <span className={`${baseClasses} ${themeClasses}`}>{icon}{text}</span>;
@@ -165,21 +239,24 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => { // Acce
           </button>
         </div>
 
+        {/* Display feedback messages */}
         {connectionError && !isLoading && <Alert type="error" message="Não foi possível conectar ao banco de dados..." />}
-        {error && !isLoading && <Alert type="error" message={error} />}
+        {error && <Alert type="error" message={error} />}
+        {successMessage && <Alert type="success" message={successMessage} />}
+
 
         {isLoading ? (
           <div className="text-center py-12">
             <Spinner size="lg" />
             <p className="mt-3 text-text-secondary-light dark:text-text-secondary-dark">Carregando lotes...</p>
           </div>
-        ) : !connectionError && !error && batches.length === 0 ? (
+        ) : !connectionError && batches.length === 0 ? ( // Simplified condition
           <div className="text-center py-12 bg-muted-light dark:bg-muted-dark rounded-lg border border-border-light dark:border-border-dark">
             <AlertCircle className="h-12 w-12 mx-auto text-text-secondary-light dark:text-text-secondary-dark mb-4" />
             <p className="text-text-primary-light dark:text-text-primary-dark">Nenhum lote encontrado.</p>
             <p className="text-text-secondary-light dark:text-text-secondary-dark text-sm mt-2">Faça upload de um arquivo Excel na tela de Upload para criar um novo lote.</p>
           </div>
-        ) : !connectionError && !error && batches.length > 0 ? (
+        ) : !connectionError && batches.length > 0 ? ( // Simplified condition
           <>
             <Table headers={['NOME', 'API', 'ARQUIVO', 'CPFs (V/I)', 'STATUS', 'CRIADO EM', 'AÇÕES']}>
               {paginatedData.map((batch) => (
@@ -209,7 +286,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => { // Acce
                     {formatDate(batch.created_at)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-2 items-center"> {/* Use items-center */}
                        {/* View Details Button */}
                        <button
                          onClick={() => onViewDetails(batch.id)}
@@ -219,15 +296,20 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => { // Acce
                          <Eye className="h-5 w-5" />
                        </button>
                       {/* Start/Pause Buttons */}
-                      {batch.status === 'pending' || batch.status === 'paused' ? (
-                        <button onClick={() => handleStartBatch(batch.id)} className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 focus:outline-none transition-colors" title="Iniciar processamento">
-                          <Play className="h-5 w-5" />
+                      {batch.status === 'Pendente' || batch.status === 'Pausado' ? (
+                        <button
+                          onClick={() => handleStartJob(batch.id)}
+                          disabled={startingJobId === batch.id} // Disable while starting this specific job
+                          className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-wait" // Add cursor-wait
+                          title="Iniciar processamento"
+                        >
+                          {startingJobId === batch.id ? <Spinner size="sm" color="blue" /> : <Play className="h-5 w-5" />}
                         </button>
-                      ) : batch.status === 'processing' ? (
+                      ) : batch.status === 'Em execução' ? (
                         <button onClick={() => handlePauseBatch(batch.id)} className="p-1 text-yellow-600 hover:text-yellow-800 dark:text-yellow-400 dark:hover:text-yellow-300 focus:outline-none transition-colors" title="Pausar processamento">
                           <Pause className="h-5 w-5" />
                         </button>
-                      ) : ( <div className="w-7"></div> /* Placeholder */ )}
+                      ) : ( <div className="w-7 h-7"></div> /* Placeholder for alignment */ )}
                       {/* Delete Button */}
                       <button onClick={() => handleDeleteBatch(batch.id)} className="p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 focus:outline-none transition-colors" title="Excluir lote">
                         <Trash2 className="h-5 w-5" />

@@ -31,7 +31,7 @@ export type Batch = {
   total_cpfs: number;
   valid_cpfs: number;
   invalid_cpfs: number;
-  status: 'pending' | 'processing' | 'completed' | 'paused' | 'error';
+  status: 'Pendente' | 'Em execução' | 'Finalizado' | 'paused' | 'error';
   created_at: string;
   updated_at: string;
 };
@@ -44,7 +44,7 @@ export type CPFRecord = {
   nome: string;
   telefone: string | null; // Allow null for phone
   is_valid: boolean; // Result of initial validation
-  status: 'pending' | 'processed' | 'error'; // Status for API processing
+  status: 'Pendente' | 'Em execução' | 'Finalizado'; // Status for API processing
   result: any | null; // Result from bank API (JSONB?)
   created_at: string;
   updated_at: string;
