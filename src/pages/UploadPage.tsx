@@ -173,11 +173,14 @@ const UploadPage: React.FC = () => {
         throw new Error('Algumas tabelas necessárias não foram encontradas no banco de dados.');
       }
 
-      // Create batch in Supabase
-      const batch = await createBatch({
+      // Create batch in Supabase - **Ensure status is 'pending'**
+      const batchToCreate = {
         ...batchData,
-        status: 'pending'
-      });
+        status: 'pending' as const // Explicitly set status to 'pending'
+      };
+
+      const batch = await createBatch(batchToCreate);
+
 
       if (!batch) {
         throw new Error('Falha ao criar o lote no banco de dados');
@@ -190,6 +193,7 @@ const UploadPage: React.FC = () => {
         nome: record.nome,
         telefone: record.telefone,
         is_valid: record.isValid
+        // status and result will be set to defaults by createCPFRecords function
       }));
 
       const success = await createCPFRecords(cpfRecords);
