@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { read, utils } from 'xlsx';
 import { v4 as uuidv4 } from 'uuid';
 import { validateCPF, cleanAndPadCPF, formatCPF } from '../utils/validators';
-import { createBatch, createCPFRecords, checkSupabaseConnection } from '../utils/supabase';
+import { createBatch, createCPFRecords, checkSupabaseConnection, checkTablesExist } from '../utils/supabase';
 import FileUploader from '../components/ui/FileUploader';
 import Alert from '../components/ui/Alert';
 import Spinner from '../components/ui/Spinner';
 import CPFTable, { CPFRecord } from '../components/CPFTable';
 import ValidationSummary from '../components/ValidationSummary';
 import BatchForm from '../components/BatchForm';
+import DatabaseStatusChecker from '../components/DatabaseStatusChecker';
 import { usePagination } from '../hooks/usePagination';
 
 const UploadPage: React.FC = () => {
@@ -18,6 +19,7 @@ const UploadPage: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [currentFilename, setCurrentFilename] = useState<string>('');
   const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
+  const [tablesStatus, setTablesStatus] = useState<{batches: boolean, cpf_records: boolean} | null>(null);
   
   // Use pagination hook
   const { currentPage, totalPages, paginatedData, setPage } = usePagination(data, 5);
@@ -30,6 +32,14 @@ const UploadPage: React.FC = () => {
       
       if (!isConnected) {
         setError('Não foi possível conectar ao banco de dados. Verifique sua conexão e tente novamente.');
+      } else {
+        // If connected, check if tables exist
+        const tables = await checkTablesExist();
+        setTablesStatus(tables);
+        
+        if (!tables.batches || !tables.cpf_records) {
+          console.warn('Some required tables do not exist:', tables);
+        }
       }
     };
     
@@ -153,6 +163,12 @@ const UploadPage: React.FC = () => {
         setSupabaseConnected(true);
       }
       
+      // Check if tables exist
+      const tables = await checkTablesExist();
+      if (!tables.batches || !tables.cpf_records) {
+        throw new Error('Algumas tabelas necessárias não foram encontradas no banco de dados.');
+      }
+      
       // Create batch in Supabase
       const batch = await createBatch({
         ...batchData,
@@ -185,11 +201,17 @@ const UploadPage: React.FC = () => {
     }
   };
 
+  const handleDatabaseStatusChange = (status: {batches: boolean, cpf_records: boolean}) => {
+    setTablesStatus(status);
+  };
+
   const validCount = data.filter(row => row.isValid).length;
   const invalidCount = data.length - validCount;
 
   return (
     <div className="max-w-4xl mx-auto">
+      <DatabaseStatusChecker onStatusChange={handleDatabaseStatusChange} />
+      
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
         <h1 className="text-2xl font-bold text-gray-800 mb-4">Upload de Arquivo Excel</h1>
         <p className="text-gray-600 mb-6">

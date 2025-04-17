@@ -39,26 +39,22 @@ CREATE INDEX IF NOT EXISTS cpf_records_cpf_idx ON cpf_records(cpf);
 
 ALTER TABLE cpf_records ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can read all CPF records"
+CREATE POLICY "Allow public read access"
   ON cpf_records
   FOR SELECT
-  TO authenticated
   USING (true);
 
-CREATE POLICY "Users can insert CPF records"
+CREATE POLICY "Allow public insert access"
   ON cpf_records
   FOR INSERT
-  TO authenticated
   WITH CHECK (true);
 
-CREATE POLICY "Users can update CPF records"
+CREATE POLICY "Allow public update access"
   ON cpf_records
   FOR UPDATE
-  TO authenticated
   USING (true);
 
-CREATE POLICY "Users can delete CPF records"
+CREATE POLICY "Allow public delete access"
   ON cpf_records
   FOR DELETE
-  TO authenticated
   USING (true);

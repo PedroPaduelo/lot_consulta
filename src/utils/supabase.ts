@@ -128,3 +128,35 @@ export async function checkSupabaseConnection(): Promise<boolean> {
     return false;
   }
 }
+
+// Helper function to check if tables exist
+export async function checkTablesExist(): Promise<{batches: boolean, cpf_records: boolean}> {
+  try {
+    console.log('Checking if tables exist...');
+    
+    // Check batches table
+    const batchesResult = await supabase
+      .from('batches')
+      .select('id')
+      .limit(1);
+    
+    // Check cpf_records table
+    const cpfRecordsResult = await supabase
+      .from('cpf_records')
+      .select('id')
+      .limit(1);
+    
+    const batchesExists = !batchesResult.error || !batchesResult.error.message.includes('does not exist');
+    const cpfRecordsExists = !cpfRecordsResult.error || !cpfRecordsResult.error.message.includes('does not exist');
+    
+    console.log('Tables exist check:', { batches: batchesExists, cpf_records: cpfRecordsExists });
+    
+    return { 
+      batches: batchesExists, 
+      cpf_records: cpfRecordsExists 
+    };
+  } catch (err) {
+    console.error('Exception checking tables:', err);
+    return { batches: false, cpf_records: false };
+  }
+}
