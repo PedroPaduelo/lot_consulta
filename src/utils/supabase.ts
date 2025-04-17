@@ -1,14 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Get environment variables
+// Access environment variables using import.meta.env
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // Validate environment variables
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables');
-  throw new Error('Missing Supabase environment variables. Please check your .env file.');
+  const errorMessage = 'Variáveis de ambiente Supabase ausentes ou inválidas. Verifique seu arquivo .env e a configuração do Vite (envPrefix).';
+  console.error(errorMessage);
+  // Optionally display this error prominently in the UI during development
+  // For example, by setting a global state or throwing an error caught by an ErrorBoundary
+  throw new Error(errorMessage);
 }
+
+// Log the variables being used (remove in production)
+console.log('Supabase URL:', supabaseUrl ? 'Loaded' : 'MISSING!');
+// Avoid logging the key directly, even the anon key, in logs if possible.
+console.log('Supabase Anon Key:', supabaseAnonKey ? 'Loaded' : 'MISSING!');
+
 
 // Create Supabase client with explicit options
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -20,7 +29,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 });
 
 // Log connection status for debugging
-console.log('Supabase client initialized with URL:', supabaseUrl);
+console.log('Supabase client initialized.');
 
 // Define types for database tables
 export type Batch = {
@@ -130,7 +139,7 @@ export async function checkSupabaseConnection(): Promise<boolean> {
   try {
     // Try a simple query that doesn't rely on specific tables existing initially
     // Using a non-existent function call is a decent check for connectivity
-    // without relying on table structure. Expect 'relation "pg_catalog.get_user_id_by_email" does not exist' or similar, not network error.
+    // without relying on table structure. Expect 'relation "pg_catalog.rpc_does_not_exist_test_connection" does not exist' or similar, not network error.
     const { error } = await supabase.rpc('rpc_does_not_exist_test_connection');
 
     // We expect a specific error if the function doesn't exist (e.g., 42883),
@@ -152,7 +161,10 @@ export async function checkSupabaseConnection(): Promise<boolean> {
 
     // Log other unexpected errors but might still indicate connection issue
     console.warn('Supabase connection check encountered unexpected error:', error);
-    return false; // Assume failure on unexpected errors
+    // Consider returning true even on some errors if they don't indicate a connection failure
+    // For example, permission errors might still mean the DB is reachable.
+    // However, for simplicity, we'll return false on unexpected errors for now.
+    return false;
 
   } catch (err) {
     // Catch any other exceptions during the check
@@ -179,10 +191,13 @@ export async function checkTablesExist(): Promise<{batches: boolean, cpf_records
     // Check if error indicates table doesn't exist (code P0001 might be from RLS, 42P01 is relation does not exist)
     if (batchesResult.error && batchesResult.error.code === '42P01') {
       batchesExists = false;
+      console.warn('Table "batches" does not exist (42P01).');
     } else if (batchesResult.error) {
       // Log other errors but assume table might exist if it's not a "does not exist" error
-      console.warn('Error checking batches table (assuming exists unless 42P01):', batchesResult.error.message);
-      batchesExists = true; // Or false, depending on desired strictness
+      console.warn('Error checking batches table (assuming exists unless 42P01):', batchesResult.error.message, batchesResult.error.code);
+      // Decide strictness: should other errors mean the table doesn't exist for the app's purpose?
+      // If RLS might block the check, we might assume it exists.
+      batchesExists = true; // Assuming exists on non-42P01 errors for now
     } else {
       batchesExists = true;
     }
@@ -195,9 +210,10 @@ export async function checkTablesExist(): Promise<{batches: boolean, cpf_records
 
     if (cpfRecordsResult.error && cpfRecordsResult.error.code === '42P01') {
       cpfRecordsExists = false;
+       console.warn('Table "cpf_records" does not exist (42P01).');
     } else if (cpfRecordsResult.error) {
-      console.warn('Error checking cpf_records table (assuming exists unless 42P01):', cpfRecordsResult.error.message);
-      cpfRecordsExists = true; // Or false
+      console.warn('Error checking cpf_records table (assuming exists unless 42P01):', cpfRecordsResult.error.message, cpfRecordsResult.error.code);
+      cpfRecordsExists = true; // Assuming exists on non-42P01 errors
     } else {
       cpfRecordsExists = true;
     }

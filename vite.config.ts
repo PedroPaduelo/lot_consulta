@@ -7,10 +7,8 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ['lucide-react'],
   },
-  // Add this to make environment variables available in the client
-  define: {
-    'process.env': {}
-  },
-  // Ensure proper handling of environment variables
-  envPrefix: 'VITE_'
+  // Define envPrefix to ensure variables starting with VITE_ are exposed
+  envPrefix: 'VITE_',
+  // No need for `define: { 'process.env': {} }` with modern Vite versions
+  // when using `import.meta.env`
 })
