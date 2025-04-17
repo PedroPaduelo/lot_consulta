@@ -12,39 +12,31 @@ import BatchForm from '../components/BatchForm';
 import DatabaseStatusChecker from '../components/DatabaseStatusChecker';
 import { usePagination } from '../hooks/usePagination';
 
+// Define the type for the database status state
+type DbStatus = {
+  connected: boolean;
+  connectionError?: string;
+  tables: {
+    batches: { exists: boolean; error?: string };
+    cpf_records: { exists: boolean; error?: string };
+  } | null;
+};
+
 const UploadPage: React.FC = () => {
   const [data, setData] = useState<CPFRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false); // Loading file processing
+  const [error, setError] = useState<string | null>(null); // File processing/saving errors
+  const [success, setSuccess] = useState<string | null>(null); // File processing/saving success
   const [currentFilename, setCurrentFilename] = useState<string>('');
-  const [supabaseConnected, setSupabaseConnected] = useState<boolean | null>(null);
-  const [tablesStatus, setTablesStatus] = useState<{batches: boolean, cpf_records: boolean} | null>(null);
+  const [dbStatus, setDbStatus] = useState<DbStatus | null>(null); // Combined DB status
 
   // Use pagination hook
   const { currentPage, totalPages, paginatedData, setPage } = usePagination(data, 5);
 
-  // Check Supabase connection on component mount
-  useEffect(() => {
-    const checkConnection = async () => {
-      const isConnected = await checkSupabaseConnection();
-      setSupabaseConnected(isConnected);
-
-      if (!isConnected) {
-        setError('Não foi possível conectar ao banco de dados. Verifique sua conexão e tente novamente.');
-      } else {
-        // If connected, check if tables exist
-        const tables = await checkTablesExist();
-        setTablesStatus(tables);
-
-        if (!tables.batches || !tables.cpf_records) {
-          console.warn('Some required tables do not exist:', tables);
-        }
-      }
-    };
-
-    checkConnection();
-  }, []);
+  // Callback for DatabaseStatusChecker
+  const handleDatabaseStatusChange = (status: DbStatus) => {
+    setDbStatus(status);
+  };
 
   const handleFileUpload = async (file: File) => {
     // Check if file is Excel
@@ -157,22 +149,16 @@ const UploadPage: React.FC = () => {
     valid_cpfs: number;
     invalid_cpfs: number;
   }) => {
+    // Clear previous save errors/success
+    setError(null);
+    setSuccess(null);
+
+    // Re-check DB status before saving
+    if (!dbStatus || !dbStatus.connected || !dbStatus.tables?.batches.exists || !dbStatus.tables?.cpf_records.exists) {
+       throw new Error('Não é possível salvar. Verifique a conexão e a existência das tabelas no banco de dados.');
+    }
+
     try {
-      // Check Supabase connection first
-      if (supabaseConnected === false) {
-        const isConnected = await checkSupabaseConnection();
-        if (!isConnected) {
-          throw new Error('Não foi possível conectar ao banco de dados. Verifique sua conexão e tente novamente.');
-        }
-        setSupabaseConnected(true);
-      }
-
-      // Check if tables exist
-      const tables = await checkTablesExist();
-      if (!tables.batches || !tables.cpf_records) {
-        throw new Error('Algumas tabelas necessárias não foram encontradas no banco de dados.');
-      }
-
       // Create batch in Supabase - **Ensure status is 'pending'**
       const batchToCreate = {
         ...batchData,
@@ -180,7 +166,6 @@ const UploadPage: React.FC = () => {
       };
 
       const batch = await createBatch(batchToCreate);
-
 
       if (!batch) {
         throw new Error('Falha ao criar o lote no banco de dados');
@@ -191,35 +176,41 @@ const UploadPage: React.FC = () => {
         batch_id: batch.id,
         cpf: record.cpf.replace(/\D/g, ''), // Store clean CPF
         nome: record.nome,
-        telefone: record.telefone,
+        telefone: record.telefone === '-' ? null : record.telefone, // Store null if phone was '-'
         is_valid: record.isValid
         // status and result will be set to defaults by createCPFRecords function
       }));
 
-      const success = await createCPFRecords(cpfRecords);
+      const cpfSuccess = await createCPFRecords(cpfRecords);
 
-      if (!success) {
+      if (!cpfSuccess) {
         // TODO: Consider deleting the created batch if CPF records fail? Or mark batch as error?
         throw new Error('Falha ao criar os registros de CPF no banco de dados');
       }
 
-      return true;
+      // Clear data and filename after successful save
+      setData([]);
+      setCurrentFilename('');
+      setSuccess('Lote e registros de CPF salvos com sucesso!'); // Set success message here
+      return true; // Indicate success to BatchForm
+
     } catch (err) {
       console.error('Error saving batch:', err);
-      // Propagate the error message
-      throw err; // Re-throw the error to be caught in BatchForm
+      setError(`Erro ao salvar o lote: ${err instanceof Error ? err.message : 'Erro desconhecido'}`);
+      // Propagate the error message to BatchForm
+      throw err;
     }
-  };
-
-  const handleDatabaseStatusChange = (status: {batches: boolean, cpf_records: boolean}) => {
-    setTablesStatus(status);
   };
 
   const validCount = data.filter(row => row.isValid).length;
   const invalidCount = data.length - validCount;
 
+  // Determine if saving should be disabled
+  const isSaveDisabled = !dbStatus || !dbStatus.connected || !dbStatus.tables?.batches.exists || !dbStatus.tables?.cpf_records.exists;
+
   return (
     <div className="max-w-4xl mx-auto">
+      {/* Database Status Checker will render its own Alerts */}
       <DatabaseStatusChecker onStatusChange={handleDatabaseStatusChange} />
 
       {/* Themed Upload Card */}
@@ -228,13 +219,6 @@ const UploadPage: React.FC = () => {
         <p className="text-text-secondary-light dark:text-text-secondary-dark mb-6">
           Faça upload de um arquivo Excel (.xlsx ou .xls) contendo CPFs para validação. O sistema tentará identificar a coluna de CPF automaticamente.
         </p>
-
-        {supabaseConnected === false && (
-          <Alert
-            type="warning"
-            message="Não foi possível conectar ao banco de dados. Você ainda pode validar CPFs, mas não poderá salvar lotes para processamento."
-          />
-        )}
 
         <FileUploader onFileSelect={handleFileUpload} />
 
@@ -245,6 +229,7 @@ const UploadPage: React.FC = () => {
           </div>
         )}
 
+        {/* Display file processing/saving errors/success */}
         {error && <Alert type="error" message={error} />}
         {success && <Alert type="success" message={success} />}
       </div>
@@ -265,8 +250,8 @@ const UploadPage: React.FC = () => {
             invalidCount={invalidCount}
             filename={currentFilename}
             onSave={handleSaveBatch}
-            // Disable save if Supabase is not connected or tables don't exist
-            disabled={supabaseConnected === false || !tablesStatus?.batches || !tablesStatus?.cpf_records}
+            // Disable save based on combined DB status
+            disabled={isSaveDisabled}
           />
 
           {/* CPF Table - Already themed */}

@@ -4,18 +4,19 @@
   1. New Tables
     - `batches`
       - `id` (uuid, primary key)
-      - `name` (text, batch name)
-      - `bank_api` (text, selected bank API)
-      - `filename` (text, original filename)
-      - `total_cpfs` (integer, total CPFs in batch)
-      - `valid_cpfs` (integer, valid CPFs count)
-      - `invalid_cpfs` (integer, invalid CPFs count)
-      - `status` (text, batch status: 'pending', 'processing', 'completed', 'paused', 'error')
-      - `created_at` (timestamp)
-      - `updated_at` (timestamp)
+      - `name` (text, not null)
+      - `bank_api` (text, not null)
+      - `filename` (text, not null)
+      - `total_cpfs` (integer, not null)
+      - `valid_cpfs` (integer, not null)
+      - `invalid_cpfs` (integer, not null)
+      - `status` (text, not null)
+      - `id_execucao` (text, null)
+      - `created_at` (timestamptz, default now())
+      - `updated_at` (timestamptz, default now())
   2. Security
     - Enable RLS on `batches` table
-    - Add policy for authenticated users to read/write their own data
+    - Add policy for authenticated users to read their own data
 */
 
 CREATE TABLE IF NOT EXISTS batches (
@@ -26,33 +27,17 @@ CREATE TABLE IF NOT EXISTS batches (
   total_cpfs integer NOT NULL DEFAULT 0,
   valid_cpfs integer NOT NULL DEFAULT 0,
   invalid_cpfs integer NOT NULL DEFAULT 0,
-  status text NOT NULL DEFAULT 'pending',
+  status text NOT NULL DEFAULT 'Pendente',
+  id_execucao text,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
 
 ALTER TABLE batches ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can read all batches"
+CREATE POLICY "Allow full access to all users"
   ON batches
-  FOR SELECT
-  TO authenticated
-  USING (true);
-
-CREATE POLICY "Users can insert batches"
-  ON batches
-  FOR INSERT
-  TO authenticated
+  FOR ALL
+  TO anon
+  USING (true)
   WITH CHECK (true);
-
-CREATE POLICY "Users can update batches"
-  ON batches
-  FOR UPDATE
-  TO authenticated
-  USING (true);
-
-CREATE POLICY "Users can delete batches"
-  ON batches
-  FOR DELETE
-  TO authenticated
-  USING (true);

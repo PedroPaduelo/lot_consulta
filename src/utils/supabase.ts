@@ -1,25 +1,29 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Access environment variables using import.meta.env
+// --- START Enhanced Environment Variable Debugging ---
+console.log('[DEBUG] Reading environment variables...');
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
+console.log(`[DEBUG] VITE_SUPABASE_URL: ${supabaseUrl ? `"${supabaseUrl}"` : 'NOT FOUND or empty'}`);
+console.log(`[DEBUG] VITE_SUPABASE_ANON_KEY: ${supabaseAnonKey ? `"${supabaseAnonKey.substring(0, 10)}..." (loaded)` : 'NOT FOUND or empty'}`); // Log only prefix of key
+
 // Validate environment variables
 if (!supabaseUrl || !supabaseAnonKey) {
-  const errorMessage = 'Variáveis de ambiente Supabase ausentes ou inválidas. Verifique seu arquivo .env e a configuração do Vite (envPrefix).';
-  console.error(errorMessage);
-  // Optionally display this error prominently in the UI during development
-  // For example, by setting a global state or throwing an error caught by an ErrorBoundary
-  throw new Error(errorMessage);
+  const errorMessage = 'Variáveis de ambiente Supabase (VITE_SUPABASE_URL ou VITE_SUPABASE_ANON_KEY) ausentes ou inválidas. Verifique seu arquivo .env e a configuração do Vite (envPrefix).';
+  console.error('[ERROR]', errorMessage);
+  // Display error prominently in the UI during development
+  const errorDiv = `<div style="position: fixed; top: 0; left: 0; width: 100%; padding: 15px; background-color: #f8d7da; color: #721c24; border-bottom: 1px solid #f5c6cb; z-index: 9999; font-family: sans-serif; font-size: 14px;"><b>Erro Crítico:</b> ${errorMessage}</div>`;
+  document.body.insertAdjacentHTML('afterbegin', errorDiv);
+  throw new Error(errorMessage); // Stop execution
+} else {
+  console.log('[DEBUG] Environment variables seem to be loaded.');
 }
-
-// Log the variables being used (remove in production)
-console.log('Supabase URL:', supabaseUrl ? 'Loaded' : 'MISSING!');
-// Avoid logging the key directly, even the anon key, in logs if possible.
-console.log('Supabase Anon Key:', supabaseAnonKey ? 'Loaded' : 'MISSING!');
+// --- END Enhanced Environment Variable Debugging ---
 
 
 // Create Supabase client with explicit options
+console.log('[DEBUG] Initializing Supabase client...');
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
@@ -29,7 +33,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 });
 
 // Log connection status for debugging
-console.log('Supabase client initialized.');
+console.log('Supabase client initialized instance:', supabase ? 'OK' : 'Failed');
 
 // Define types for database tables
 export type Batch = {
@@ -135,95 +139,124 @@ export async function createCPFRecords(records: Array<Omit<CPFRecord, 'id' | 'cr
 }
 
 // Helper function to check if Supabase connection is working
-export async function checkSupabaseConnection(): Promise<boolean> {
+// Uses a direct query to the batches table instead of system tables
+export async function checkSupabaseConnection(): Promise<{ connected: boolean; error?: string }> {
   try {
-    // Try a simple query that doesn't rely on specific tables existing initially
-    // Using a non-existent function call is a decent check for connectivity
-    // without relying on table structure. Expect 'relation "pg_catalog.rpc_does_not_exist_test_connection" does not exist' or similar, not network error.
-    const { error } = await supabase.rpc('rpc_does_not_exist_test_connection');
+    console.log('Attempting Supabase connection check...');
+    
+    // Try a direct query to the batches table
+    const { error } = await supabase
+      .from('batches')
+      .select('id')
+      .limit(1);
 
-    // We expect a specific error if the function doesn't exist (e.g., 42883),
-    // but not a connection error. Check for common connection error messages.
-    if (error && (error.message.includes('Failed to fetch') || error.message.includes('NetworkError'))) {
-        console.error('Supabase connection check failed (Network/Fetch Error):', error);
-        return false;
+    if (error) {
+      // If the batches table doesn't exist yet, that's okay for connection check
+      if (error.code === '42P01') { // Relation does not exist
+        console.log('Batches table not found, but connection is working');
+        return { connected: true };
+      }
+      
+      // Log the specific error for better debugging
+      console.error('Supabase connection check failed:', error);
+      
+      // Check for common network errors
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        return { connected: false, error: `Falha de rede ao conectar ao Supabase. Verifique a URL e a conexão com a internet. (${error.message})` };
+      }
+      
+      // Check for potential authentication/key errors
+      if (error.message.includes('Invalid API key') || error.message.includes('Unauthorized')) {
+         return { connected: false, error: `Chave de API Supabase inválida ou não autorizada. Verifique VITE_SUPABASE_ANON_KEY. (${error.message})` };
+      }
+      
+      // Check for URL/Host errors
+      if (error.message.includes('hostname') || error.message.includes('URL')) {
+         return { connected: false, error: `URL do Supabase inválida ou inacessível. Verifique VITE_SUPABASE_URL. (${error.message})` };
+      }
+      
+      // Permission errors are okay for connection check
+      if (error.message.includes('permission denied')) {
+        console.log('Permission denied, but connection is working');
+        return { connected: true };
+      }
+      
+      // Other Supabase errors
+      return { connected: false, error: `Erro ao comunicar com Supabase: ${error.message}` };
     }
-     if (error && error.code === '42883') {
-         // This error (undefined function) indicates the DB is reachable.
-         console.log('Supabase connection check successful (DB reachable).');
-         return true;
-     }
-     if (!error) {
-        // If the RPC somehow exists and doesn't error, connection is also good.
-         console.log('Supabase connection check successful.');
-         return true;
-     }
 
-    // Log other unexpected errors but might still indicate connection issue
-    console.warn('Supabase connection check encountered unexpected error:', error);
-    // Consider returning true even on some errors if they don't indicate a connection failure
-    // For example, permission errors might still mean the DB is reachable.
-    // However, for simplicity, we'll return false on unexpected errors for now.
-    return false;
+    // If no error, connection is successful
+    console.log('Supabase connection check successful.');
+    return { connected: true };
 
-  } catch (err) {
+  } catch (err: any) {
     // Catch any other exceptions during the check
     console.error('Exception checking Supabase connection:', err);
-    return false;
+    return { connected: false, error: `Exceção inesperada ao verificar conexão: ${err.message}` };
   }
 }
 
-
 // Helper function to check if tables exist
-export async function checkTablesExist(): Promise<{batches: boolean, cpf_records: boolean}> {
-  let batchesExists = false;
-  let cpfRecordsExists = false;
+// Returns specific error messages if checks fail
+export async function checkTablesExist(): Promise<{
+  batches: { exists: boolean; error?: string };
+  cpf_records: { exists: boolean; error?: string };
+}> {
+  const result = {
+    batches: { exists: false, error: undefined as string | undefined },
+    cpf_records: { exists: false, error: undefined as string | undefined },
+  };
 
   try {
     console.log('Checking if tables exist...');
 
-    // Check batches table by trying to select a single row's primary key
+    // Check batches table
     const batchesResult = await supabase
       .from('batches')
       .select('id', { count: 'exact', head: true }) // Use head:true for faster check
       .limit(1);
 
-    // Check if error indicates table doesn't exist (code P0001 might be from RLS, 42P01 is relation does not exist)
-    if (batchesResult.error && batchesResult.error.code === '42P01') {
-      batchesExists = false;
-      console.warn('Table "batches" does not exist (42P01).');
-    } else if (batchesResult.error) {
-      // Log other errors but assume table might exist if it's not a "does not exist" error
-      console.warn('Error checking batches table (assuming exists unless 42P01):', batchesResult.error.message, batchesResult.error.code);
-      // Decide strictness: should other errors mean the table doesn't exist for the app's purpose?
-      // If RLS might block the check, we might assume it exists.
-      batchesExists = true; // Assuming exists on non-42P01 errors for now
+    if (batchesResult.error) {
+      console.warn('Error checking batches table:', batchesResult.error);
+      if (batchesResult.error.code === '42P01') { // Relation does not exist
+        result.batches.error = 'Tabela "batches" não encontrada.';
+      } else if (batchesResult.error.message.includes('permission denied')) {
+         result.batches.error = 'Permissão negada para acessar a tabela "batches". Verifique as políticas RLS.';
+      } else {
+        result.batches.error = `Erro ao verificar tabela "batches": ${batchesResult.error.message}`;
+      }
     } else {
-      batchesExists = true;
+      result.batches.exists = true;
     }
 
-    // Check cpf_records table similarly
+    // Check cpf_records table
     const cpfRecordsResult = await supabase
       .from('cpf_records')
       .select('id', { count: 'exact', head: true })
       .limit(1);
 
-    if (cpfRecordsResult.error && cpfRecordsResult.error.code === '42P01') {
-      cpfRecordsExists = false;
-       console.warn('Table "cpf_records" does not exist (42P01).');
-    } else if (cpfRecordsResult.error) {
-      console.warn('Error checking cpf_records table (assuming exists unless 42P01):', cpfRecordsResult.error.message, cpfRecordsResult.error.code);
-      cpfRecordsExists = true; // Assuming exists on non-42P01 errors
+    if (cpfRecordsResult.error) {
+       console.warn('Error checking cpf_records table:', cpfRecordsResult.error);
+       if (cpfRecordsResult.error.code === '42P01') { // Relation does not exist
+         result.cpf_records.error = 'Tabela "cpf_records" não encontrada.';
+       } else if (cpfRecordsResult.error.message.includes('permission denied')) {
+          result.cpf_records.error = 'Permissão negada para acessar a tabela "cpf_records". Verifique as políticas RLS.';
+       } else {
+         result.cpf_records.error = `Erro ao verificar tabela "cpf_records": ${cpfRecordsResult.error.message}`;
+       }
     } else {
-      cpfRecordsExists = true;
+      result.cpf_records.exists = true;
     }
 
-    console.log('Tables exist check result:', { batches: batchesExists, cpf_records: cpfRecordsExists });
-    return { batches: batchesExists, cpf_records: cpfRecordsExists };
+    console.log('Tables exist check result:', result);
+    return result;
 
-  } catch (err) {
+  } catch (err: any) {
     console.error('Exception checking tables:', err);
-    // Return false for both if a major exception occurs
-    return { batches: false, cpf_records: false };
+    // Return generic error if a major exception occurs during the check
+    const errorMsg = `Exceção ao verificar tabelas: ${err.message}`;
+    result.batches.error = result.batches.error || errorMsg;
+    result.cpf_records.error = result.cpf_records.error || errorMsg;
+    return result;
   }
 }
