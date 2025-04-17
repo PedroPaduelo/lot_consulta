@@ -31,7 +31,8 @@ export type Batch = {
   total_cpfs: number;
   valid_cpfs: number;
   invalid_cpfs: number;
-  status: 'Pendente' | 'Em execução' | 'Finalizado' | 'paused' | 'error';
+  status: 'Pendente' | 'Em execução' | 'Finalizado' | 'Pausado' | 'Erro'; // Updated status values
+  id_execucao: string | null; // Added execution ID field
   created_at: string;
   updated_at: string;
 };
@@ -44,20 +45,27 @@ export type CPFRecord = {
   nome: string;
   telefone: string | null; // Allow null for phone
   is_valid: boolean; // Result of initial validation
-  status: 'Pendente' | 'Em execução' | 'Finalizado'; // Status for API processing
+  status: 'Pendente' | 'Em execução' | 'Finalizado' | 'Erro'; // Updated status values, added Erro
   result: any | null; // Result from bank API (JSONB?)
   created_at: string;
   updated_at: string;
 };
 
 // Helper function to create a new batch
-export async function createBatch(batchData: Omit<Batch, 'id' | 'created_at' | 'updated_at'>): Promise<Batch | null> {
+export async function createBatch(batchData: Omit<Batch, 'id' | 'created_at' | 'updated_at' | 'id_execucao'>): Promise<Batch | null> { // Exclude id_execucao from input
   try {
     console.log('Creating batch with data:', batchData);
 
+    // Ensure status is one of the allowed Batch status types
+    const batchToInsert: Omit<Batch, 'id' | 'created_at' | 'updated_at' | 'id_execucao'> & { status: Batch['status'] } = {
+        ...batchData,
+        status: batchData.status || 'Pendente' // Default to Pendente if not provided
+    };
+
+
     const { data, error } = await supabase
       .from('batches')
-      .insert(batchData)
+      .insert(batchToInsert) // Insert data with explicit status
       .select()
       .single();
 
@@ -67,7 +75,9 @@ export async function createBatch(batchData: Omit<Batch, 'id' | 'created_at' | '
     }
 
     console.log('Batch created successfully:', data);
-    return data;
+    // The returned data should include the id_execucao if the DB sets it (e.g., via trigger or default)
+    // Otherwise, it might be null initially.
+    return data as Batch; // Cast to Batch to include id_execucao potentially being null
   } catch (err) {
     console.error('Exception creating batch:', err);
     return null;
@@ -87,7 +97,7 @@ export async function createCPFRecords(records: Array<Omit<CPFRecord, 'id' | 'cr
       nome: record.nome,
       telefone: record.telefone || null, // Ensure null if empty
       is_valid: record.is_valid,
-      status: 'pending' as const, // Default status
+      status: 'Pendente' as const, // Default status for CPF records
       result: null // Default result
     }));
 
@@ -119,18 +129,30 @@ export async function createCPFRecords(records: Array<Omit<CPFRecord, 'id' | 'cr
 export async function checkSupabaseConnection(): Promise<boolean> {
   try {
     // Try a simple query that doesn't rely on specific tables existing initially
-    const { error } = await supabase.rpc('get_user_id_by_email', { email: 'test@example.com' });
+    // Using a non-existent function call is a decent check for connectivity
+    // without relying on table structure. Expect 'relation "pg_catalog.get_user_id_by_email" does not exist' or similar, not network error.
+    const { error } = await supabase.rpc('rpc_does_not_exist_test_connection');
 
-    // We expect a specific error if the function doesn't exist or user not found,
+    // We expect a specific error if the function doesn't exist (e.g., 42883),
     // but not a connection error. Check for common connection error messages.
     if (error && (error.message.includes('Failed to fetch') || error.message.includes('NetworkError'))) {
         console.error('Supabase connection check failed (Network/Fetch Error):', error);
         return false;
     }
+     if (error && error.code === '42883') {
+         // This error (undefined function) indicates the DB is reachable.
+         console.log('Supabase connection check successful (DB reachable).');
+         return true;
+     }
+     if (!error) {
+        // If the RPC somehow exists and doesn't error, connection is also good.
+         console.log('Supabase connection check successful.');
+         return true;
+     }
 
-    // If no critical connection error, assume connection is okay
-    console.log('Supabase connection check successful (or table/function specific error)');
-    return true;
+    // Log other unexpected errors but might still indicate connection issue
+    console.warn('Supabase connection check encountered unexpected error:', error);
+    return false; // Assume failure on unexpected errors
 
   } catch (err) {
     // Catch any other exceptions during the check
@@ -154,12 +176,12 @@ export async function checkTablesExist(): Promise<{batches: boolean, cpf_records
       .select('id', { count: 'exact', head: true }) // Use head:true for faster check
       .limit(1);
 
-    // Check if error indicates table doesn't exist
-    if (batchesResult.error && batchesResult.error.message.includes('relation "public.batches" does not exist')) {
+    // Check if error indicates table doesn't exist (code P0001 might be from RLS, 42P01 is relation does not exist)
+    if (batchesResult.error && batchesResult.error.code === '42P01') {
       batchesExists = false;
     } else if (batchesResult.error) {
       // Log other errors but assume table might exist if it's not a "does not exist" error
-      console.warn('Error checking batches table (assuming exists):', batchesResult.error.message);
+      console.warn('Error checking batches table (assuming exists unless 42P01):', batchesResult.error.message);
       batchesExists = true; // Or false, depending on desired strictness
     } else {
       batchesExists = true;
@@ -171,10 +193,10 @@ export async function checkTablesExist(): Promise<{batches: boolean, cpf_records
       .select('id', { count: 'exact', head: true })
       .limit(1);
 
-    if (cpfRecordsResult.error && cpfRecordsResult.error.message.includes('relation "public.cpf_records" does not exist')) {
+    if (cpfRecordsResult.error && cpfRecordsResult.error.code === '42P01') {
       cpfRecordsExists = false;
     } else if (cpfRecordsResult.error) {
-      console.warn('Error checking cpf_records table (assuming exists):', cpfRecordsResult.error.message);
+      console.warn('Error checking cpf_records table (assuming exists unless 42P01):', cpfRecordsResult.error.message);
       cpfRecordsExists = true; // Or false
     } else {
       cpfRecordsExists = true;

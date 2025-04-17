@@ -7,6 +7,7 @@ import Spinner from '../components/ui/Spinner';
 import Alert from '../components/ui/Alert';
 import Dialog from '../components/ui/Dialog';
 import { usePagination } from '../hooks/usePagination';
+import StatusProcessingBadge from '../components/ui/StatusProcessingBadge'; // Import the correct badge
 
 interface BatchesPageProps {
   onViewDetails: (batchId: string) => void; // Callback to navigate
@@ -14,6 +15,8 @@ interface BatchesPageProps {
 
 // Define the webhook URL
 const JOB_WEBHOOK_URL = 'https://n8n-queue-2-n8n-webhook.mrt7ga.easypanel.host/webhook/job-consulta';
+// Define the pause webhook URL (assuming a similar pattern)
+const PAUSE_WEBHOOK_URL = 'https://n8n-queue-2-n8n-webhook.mrt7ga.easypanel.host/webhook/pause-job'; // Placeholder URL
 
 const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
   const [batches, setBatches] = useState<Batch[]>([]);
@@ -24,6 +27,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [batchToDeleteId, setBatchToDeleteId] = useState<string | null>(null);
   const [startingJobId, setStartingJobId] = useState<string | null>(null); // Track which job is starting
+  const [pausingJobId, setPausingJobId] = useState<string | null>(null); // Track which job is pausing
 
   const { currentPage, totalPages, paginatedData, setPage } = usePagination(batches, 5);
 
@@ -57,6 +61,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
         throw new Error('Não foi possível conectar ao banco de dados. Verifique sua conexão e tente novamente.');
       }
 
+      // Select all columns including the new id_execucao
       const { data, error: fetchError } = await supabase
         .from('batches')
         .select('*')
@@ -85,7 +90,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
 
   // --- Start Job Function ---
   const handleStartJob = async (batchId: string) => {
-    setStartingJobId(batchId); // Set loading state for this specific batch
+    setStartingJobId(batchId);
     setError(null);
     setSuccessMessage(null);
 
@@ -94,56 +99,80 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
     try {
       const response = await fetch(JOB_WEBHOOK_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          tipo: 'api',
-          batch_id: batchId,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo: 'api', batch_id: batchId }),
       });
 
-      console.log('Webhook response status:', response.status);
-
+      console.log('Start Webhook response status:', response.status);
       if (!response.ok) {
-        // Attempt to read error details from response body
-        let errorBody = 'Erro desconhecido do webhook.';
-        try {
-            const body = await response.json();
-            errorBody = body.message || JSON.stringify(body);
-        } catch (e) {
-            // If body is not JSON or empty
-            errorBody = `Erro ${response.status}: ${response.statusText}`;
-        }
-        throw new Error(`Falha ao chamar o webhook. ${errorBody}`);
+        let errorBody = `Erro ${response.status}: ${response.statusText}`;
+        try { errorBody = (await response.json()).message || JSON.stringify(await response.json()); } catch (e) { /* ignore */ }
+        throw new Error(`Falha ao chamar o webhook de início. ${errorBody}`);
       }
 
-      // Optional: Read success response if needed
-      // const responseData = await response.json();
-      // console.log('Webhook success response:', responseData);
-
-      setSuccessMessage(`Tarefa para o lote ${batchId.substring(0, 8)}... iniciada com sucesso. O status será atualizado em breve.`);
-      // Note: We don't update the status locally here.
-      // The webhook should trigger the status update in the database.
-      // A subsequent fetchBatches() or real-time subscription will reflect the change.
-      // Optionally trigger a refresh after a short delay:
-      // setTimeout(fetchBatches, 2000);
-
+      setSuccessMessage(`Tarefa para o lote ${batchId.substring(0, 8)}... iniciada. O status será atualizado.`);
+      // Optionally trigger a refresh after a short delay to potentially catch the status update
+      // setTimeout(fetchBatches, 3000);
 
     } catch (err: any) {
       console.error('Error starting job via webhook:', err);
       setError(`Erro ao iniciar a tarefa: ${err.message}`);
     } finally {
-      setStartingJobId(null); // Clear loading state for this batch
+      setStartingJobId(null);
     }
   };
   // --- End Start Job Function ---
 
+  // --- Pause Job Function ---
+  const handlePauseBatch = async (batchId: string, executionId: string | null) => {
+    if (!executionId) {
+        setError(`Não é possível pausar o lote ${batchId.substring(0,8)}...: ID de execução não encontrado.`);
+        return;
+    }
 
-  const handlePauseBatch = async (id: string) => {
-    console.log('Pause batch:', id);
-    setError('Funcionalidade de pausar lote ainda não implementada.');
+    setPausingJobId(batchId); // Use a separate state for pausing
+    setError(null);
+    setSuccessMessage(null);
+
+    console.log(`Attempting to pause job for batch: ${batchId} with execution ID: ${executionId}`);
+
+    try {
+      // *** Replace PAUSE_WEBHOOK_URL with the actual endpoint ***
+      const response = await fetch(PAUSE_WEBHOOK_URL, { // Use the correct pause webhook URL
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // *** Adjust payload according to the pause API requirements ***
+        body: JSON.stringify({
+          // Assuming the pause API needs the execution ID
+          id_execucao: executionId,
+          // Add any other required fields for the pause API
+          // tipo: 'pause', // Example
+        }),
+      });
+
+      console.log('Pause Webhook response status:', response.status);
+
+      if (!response.ok) {
+        let errorBody = `Erro ${response.status}: ${response.statusText}`;
+        try { errorBody = (await response.json()).message || JSON.stringify(await response.json()); } catch (e) { /* ignore */ }
+        throw new Error(`Falha ao chamar o webhook de pausa. ${errorBody}`);
+      }
+
+      setSuccessMessage(`Solicitação para pausar o lote ${batchId.substring(0, 8)}... enviada. O status será atualizado.`);
+      // Optionally trigger a refresh after a short delay
+      // setTimeout(fetchBatches, 3000);
+
+    } catch (err: any) {
+      console.error('Error pausing job via webhook:', err);
+      setError(`Erro ao pausar a tarefa: ${err.message}`);
+    } finally {
+      setPausingJobId(null); // Clear pausing state
+    }
   };
+  // --- End Pause Job Function ---
+
 
   const handleDeleteBatch = (id: string) => {
     setBatchToDeleteId(id);
@@ -172,46 +201,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
     }
   };
 
-  const getStatusBadge = (status: Batch['status']) => {
-    const baseClasses = "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium";
-    let themeClasses = "";
-    let icon = null;
-    let text = "Desconhecido";
-
-    switch (status) {
-      case 'Pendente':
-        themeClasses = "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300 border border-yellow-300 dark:border-yellow-700";
-        icon = <Clock className="h-3 w-3 mr-1" />;
-        text = "Pendente";
-        break;
-      case 'Em execução':
-        themeClasses = "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 border border-blue-300 dark:border-blue-700";
-        icon = <RefreshCw className="h-3 w-3 mr-1 animate-spin" />;
-        text = "Em execução";
-        break;
-      case 'Finalizado':
-        themeClasses = "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 border border-green-300 dark:border-green-700";
-        icon = <CheckCircle className="h-3 w-3 mr-1" />;
-        text = "Finalizado";
-        break;
-      case 'Pausado':
-        themeClasses = "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600";
-        icon = <Pause className="h-3 w-3 mr-1" />;
-        text = "Pausado";
-        break;
-      case 'Erro':
-        themeClasses = "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300 border border-red-300 dark:border-red-700";
-        icon = <AlertCircle className="h-3 w-3 mr-1" />;
-        text = "Erro";
-        break;
-      default:
-        themeClasses = "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600";
-        icon = <AlertTriangle className="h-3 w-3 mr-1" />;
-        text = status; // Display unknown status directly
-        break;
-    }
-    return <span className={`${baseClasses} ${themeClasses}`}>{icon}{text}</span>;
-  };
+  // getStatusBadge remains the same, using StatusProcessingBadge now
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return '-';
@@ -258,19 +248,23 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
           </div>
         ) : !connectionError && batches.length > 0 ? ( // Simplified condition
           <>
-            <Table headers={['NOME', 'API', 'ARQUIVO', 'CPFs (V/I)', 'STATUS', 'CRIADO EM', 'AÇÕES']}>
+            {/* Updated Table Headers */}
+            <Table headers={['NOME', 'API', 'ARQUIVO', 'CPFs (V/I)', 'ID EXECUÇÃO', 'STATUS', 'CRIADO EM', 'AÇÕES']}>
               {paginatedData.map((batch) => (
                 <tr key={batch.id} className="hover:bg-muted-light dark:hover:bg-muted-dark transition-colors duration-150">
-                  {/* Make name clickable */}
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary-light dark:text-primary-dark hover:underline cursor-pointer max-w-[200px] truncate" title={batch.name} onClick={() => onViewDetails(batch.id)}>
+                  {/* Name */}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary-light dark:text-primary-dark hover:underline cursor-pointer max-w-[180px] truncate" title={batch.name} onClick={() => onViewDetails(batch.id)}>
                     {batch.name}
                   </td>
+                  {/* API */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
                     {batch.bank_api || '-'}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark max-w-[150px] truncate" title={batch.filename}>
+                  {/* Filename */}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark max-w-[120px] truncate" title={batch.filename}>
                     {batch.filename || '-'}
                   </td>
+                  {/* CPF Counts */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
                     {batch.total_cpfs || 0}
                     <span className="text-xs ml-1">
@@ -279,14 +273,21 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
                       <span className="text-red-600 dark:text-red-400">{batch.invalid_cpfs || 0}</span>)
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {getStatusBadge(batch.status)}
+                  {/* Execution ID */}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark font-mono text-xs max-w-[100px] truncate" title={batch.id_execucao ?? undefined}>
+                    {batch.id_execucao || '-'}
                   </td>
+                  {/* Status */}
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <StatusProcessingBadge status={batch.status} size="sm"/> {/* Use StatusProcessingBadge */}
+                  </td>
+                  {/* Created At */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
                     {formatDate(batch.created_at)}
                   </td>
+                  {/* Actions */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
-                    <div className="flex space-x-2 items-center"> {/* Use items-center */}
+                    <div className="flex space-x-2 items-center">
                        {/* View Details Button */}
                        <button
                          onClick={() => onViewDetails(batch.id)}
@@ -299,19 +300,29 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
                       {batch.status === 'Pendente' || batch.status === 'Pausado' ? (
                         <button
                           onClick={() => handleStartJob(batch.id)}
-                          disabled={startingJobId === batch.id} // Disable while starting this specific job
-                          className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-wait" // Add cursor-wait
+                          disabled={startingJobId === batch.id || pausingJobId === batch.id} // Disable if starting or pausing
+                          className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-wait"
                           title="Iniciar processamento"
                         >
                           {startingJobId === batch.id ? <Spinner size="sm" color="blue" /> : <Play className="h-5 w-5" />}
                         </button>
                       ) : batch.status === 'Em execução' ? (
-                        <button onClick={() => handlePauseBatch(batch.id)} className="p-1 text-yellow-600 hover:text-yellow-800 dark:text-yellow-400 dark:hover:text-yellow-300 focus:outline-none transition-colors" title="Pausar processamento">
-                          <Pause className="h-5 w-5" />
+                        <button
+                            onClick={() => handlePauseBatch(batch.id, batch.id_execucao)}
+                            disabled={pausingJobId === batch.id || startingJobId === batch.id || !batch.id_execucao} // Disable if pausing, starting, or no execution ID
+                            className="p-1 text-yellow-600 hover:text-yellow-800 dark:text-yellow-400 dark:hover:text-yellow-300 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-wait"
+                            title={!batch.id_execucao ? "ID de execução não disponível para pausar" : "Pausar processamento"}
+                        >
+                          {pausingJobId === batch.id ? <Spinner size="sm" color="yellow" /> : <Pause className="h-5 w-5" />}
                         </button>
                       ) : ( <div className="w-7 h-7"></div> /* Placeholder for alignment */ )}
                       {/* Delete Button */}
-                      <button onClick={() => handleDeleteBatch(batch.id)} className="p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 focus:outline-none transition-colors" title="Excluir lote">
+                      <button
+                        onClick={() => handleDeleteBatch(batch.id)}
+                        disabled={startingJobId === batch.id || pausingJobId === batch.id} // Disable if any action is in progress
+                        className="p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 focus:outline-none transition-colors disabled:opacity-50"
+                        title="Excluir lote"
+                      >
                         <Trash2 className="h-5 w-5" />
                       </button>
                     </div>

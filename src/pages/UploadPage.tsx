@@ -176,7 +176,7 @@ const UploadPage: React.FC = () => {
       // Create batch in Supabase - **Ensure status is 'pending'**
       const batchToCreate = {
         ...batchData,
-        status: 'pending' as const // Explicitly set status to 'pending'
+        status: 'Pendente' as const // Explicitly set status to 'pending'
       };
 
       const batch = await createBatch(batchToCreate);
