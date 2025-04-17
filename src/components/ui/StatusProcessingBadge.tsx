@@ -19,28 +19,27 @@ const StatusProcessingBadge: React.FC<StatusProcessingBadgeProps> = ({ status, s
   let text = "Desconhecido";
 
   switch (status) {
-    case 'pending':
+    case 'Pendente':
       themeClasses = "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300 border border-yellow-300 dark:border-yellow-700";
       icon = <Clock className={`${iconSize} mr-1`} />;
       text = "Pendente";
       break;
-    case 'processing': // "Em execução"
+    case 'Em execução': // "Em execução"
       themeClasses = "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 border border-blue-300 dark:border-blue-700";
       icon = <RefreshCw className={`${iconSize} mr-1 animate-spin`} />;
       text = "Em execução";
       break;
-    case 'completed': // "Finalizado" (Batch)
-    case 'processed': // "Finalizado" (CPF) - Assuming 'processed' means completed for CPF
+    case 'Finalizado': // "Finalizado" (CPF) - Assuming 'processed' means completed for CPF
       themeClasses = "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 border border-green-300 dark:border-green-700";
       icon = <CheckCircle className={`${iconSize} mr-1`} />;
       text = "Finalizado";
       break;
-    case 'paused':
+    case 'Pausado':
       themeClasses = "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600";
       icon = <Pause className={`${iconSize} mr-1`} />;
       text = "Pausado";
       break;
-    case 'error':
+    case 'Erro':
       themeClasses = "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300 border border-red-300 dark:border-red-700";
       icon = <AlertCircle className={`${iconSize} mr-1`} />;
       text = "Erro";
@@ -48,6 +47,7 @@ const StatusProcessingBadge: React.FC<StatusProcessingBadgeProps> = ({ status, s
     default:
       themeClasses = "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600";
       icon = <AlertTriangle className={`${iconSize} mr-1`} />;
+			text = status
       break;
   }
 

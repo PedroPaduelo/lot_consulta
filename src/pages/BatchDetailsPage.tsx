@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // Import useRef
 import { supabase, Batch, CPFRecord as DbCPFRecord } from '../utils/supabase';
-import { ArrowLeft, FileText, Database, Calendar, CheckSquare, XSquare, Hash, User, Phone, ListFilter, Eye } from 'lucide-react'; // Added Eye
+import { ArrowLeft, FileText, Database, Calendar, CheckSquare, XSquare, Hash, User, Phone, ListFilter, Eye, Percent } from 'lucide-react'; // Added Eye, Percent
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import Spinner from '../components/ui/Spinner';
@@ -21,22 +21,29 @@ interface BatchDetailsPageProps {
   onBack: () => void;
 }
 
+const POLLING_INTERVAL_MS = 5000; // Check every 5 seconds
+
 const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) => {
   const [batch, setBatch] = useState<Batch | null>(null);
   const [cpfRecords, setCpfRecords] = useState<DisplayCPFRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<'all' | 'valid' | 'invalid'>('all');
-  const [isResultModalOpen, setIsResultModalOpen] = useState(false); // State for modal
-  const [selectedCpfRecord, setSelectedCpfRecord] = useState<DisplayCPFRecord | null>(null); // State for selected CPF
+  const [isResultModalOpen, setIsResultModalOpen] = useState(false);
+  const [selectedCpfRecord, setSelectedCpfRecord] = useState<DisplayCPFRecord | null>(null);
+
+  // State for progress
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
+  const [progressPercent, setProgressPercent] = useState<number>(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null); // Ref to store interval ID
 
   // Filter CPF records based on the selected *initial validation* filter
   const filteredCpfRecords = React.useMemo(() => {
     if (filter === 'valid') {
-      return cpfRecords.filter(cpf => cpf.isValid); // Filter by initial is_valid
+      return cpfRecords.filter(cpf => cpf.isValid);
     }
     if (filter === 'invalid') {
-      return cpfRecords.filter(cpf => !cpf.isValid); // Filter by initial is_valid
+      return cpfRecords.filter(cpf => !cpf.isValid);
     }
     return cpfRecords;
   }, [cpfRecords, filter]);
@@ -44,15 +51,90 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
   // Use pagination hook on filtered data
   const { currentPage, totalPages, paginatedData, setPage } = usePagination(filteredCpfRecords, 10);
 
+  // Function to calculate progress
+  const calculateProgress = (currentPendingCount: number | null, totalCpfs: number | undefined) => {
+    if (currentPendingCount === null || totalCpfs === undefined || totalCpfs === 0) {
+      return 0;
+    }
+    const processedCount = totalCpfs - currentPendingCount;
+    return Math.round((processedCount / totalCpfs) * 100);
+  };
+
+  // Function to fetch pending count
+  const fetchPendingCount = async (currentBatchId: string) => {
+    try {
+      const { count, error: countError } = await supabase
+        .from('cpf_records')
+        .select('id', { count: 'exact', head: true })
+        .eq('batch_id', currentBatchId)
+        .eq('status', 'pending');
+
+      if (countError) {
+        console.error("Error fetching pending count:", countError);
+        // Don't update progress if count fails, keep last known value
+        return;
+      }
+
+      setPendingCount(count ?? 0); // Update pending count state
+
+    } catch (err) {
+      console.error("Exception fetching pending count:", err);
+    }
+  };
+
+
   useEffect(() => {
     fetchBatchDetails();
+    // Clear interval on batchId change or unmount
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
   }, [batchId]);
+
+  // Effect to update progress percentage whenever pendingCount or batch changes
+  useEffect(() => {
+    setProgressPercent(calculateProgress(pendingCount, batch?.total_cpfs));
+  }, [pendingCount, batch]);
+
+  // Effect to manage the polling interval
+  useEffect(() => {
+    // Clear existing interval if batch status changes or component updates
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+
+    // Start polling only if batch exists and is processing
+    if (batch && batch.status === 'processing') {
+      // Fetch immediately first time
+      fetchPendingCount(batch.id);
+
+      // Set up interval
+      intervalRef.current = setInterval(() => {
+        fetchPendingCount(batch.id);
+      }, POLLING_INTERVAL_MS);
+    }
+
+    // Cleanup function for interval
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [batch]); // Rerun effect if batch data (including status) changes
+
 
   const fetchBatchDetails = async () => {
     setIsLoading(true);
     setError(null);
     setBatch(null);
     setCpfRecords([]);
+    setPendingCount(null); // Reset pending count on new fetch
+    setProgressPercent(0); // Reset progress
 
     try {
       // Fetch Batch Info
@@ -64,7 +146,7 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
 
       if (batchError) throw new Error(`Erro ao buscar detalhes do lote: ${batchError.message}`);
       if (!batchData) throw new Error('Lote não encontrado.');
-      setBatch(batchData);
+      setBatch(batchData); // Set batch state first
 
       // Fetch CPF Records for the batch (including status and result)
       const { data: cpfData, error: cpfError } = await supabase
@@ -82,6 +164,11 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
             isValid: record.is_valid // Map is_valid to isValid for potential filtering/display
          }));
          setCpfRecords(displayData);
+
+         // Calculate initial pending count from fetched data
+         const initialPending = displayData.filter(r => r.status === 'pending').length;
+         setPendingCount(initialPending);
+         // Initial progress is calculated by the other useEffect
       }
 
     } catch (err: any) {
@@ -150,7 +237,8 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
       {batch && (
         <div className="bg-surface-light dark:bg-surface-dark rounded-lg shadow-md p-6 border border-border-light dark:border-border-dark">
           <h2 className="text-xl font-semibold text-text-primary-light dark:text-text-primary-dark mb-5">{batch.name}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4">
+          {/* Details Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 mb-6">
             <DetailItem icon={FileText} label="Nome do Arquivo" value={batch.filename} />
             <DetailItem icon={Database} label="API Banco" value={batch.bank_api} />
             {/* Use StatusProcessingBadge for Batch Status */}
@@ -158,7 +246,7 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
                 <ListFilter className="h-5 w-5 text-text-secondary-light dark:text-text-secondary-dark mt-0.5 flex-shrink-0" />
                 <div>
                     <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Status Processamento</p>
-                    <div className="mt-1"> {/* Add margin top for badge */}
+                    <div className="mt-1">
                         <StatusProcessingBadge status={batch.status} />
                     </div>
                 </div>
@@ -169,6 +257,27 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
             <DetailItem icon={Calendar} label="Criado em" value={formatDate(batch.created_at)} />
             <DetailItem icon={Calendar} label="Atualizado em" value={formatDate(batch.updated_at)} />
           </div>
+
+          {/* Progress Bar Section - Conditionally render if total_cpfs > 0 */}
+          {batch.total_cpfs > 0 && (
+            <div className="mt-4 pt-4 border-t border-border-light dark:border-border-dark">
+              <div className="flex justify-between items-center mb-1">
+                <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">Progresso da Consulta</p>
+                <p className="text-sm font-semibold text-primary-light dark:text-primary-dark">{progressPercent}%</p>
+              </div>
+              <div className="w-full bg-muted-light dark:bg-muted-dark rounded-full h-2.5 border border-border-light dark:border-border-dark overflow-hidden">
+                <div
+                  className="bg-gradient-to-r from-blue-400 to-primary-light dark:from-blue-600 dark:to-primary-dark h-full rounded-full transition-all duration-500 ease-out" // Added gradient and transition
+                  style={{ width: `${progressPercent}%` }}
+                ></div>
+              </div>
+              {pendingCount !== null && (
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1 text-right">
+                  {batch.total_cpfs - pendingCount} de {batch.total_cpfs} consultados
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
