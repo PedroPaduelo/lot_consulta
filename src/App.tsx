@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FileSpreadsheet, Search, Menu, X, List, UserPlus } from 'lucide-react'; // Added UserPlus
 import Sidebar from './components/Sidebar';
 import UploadPage from './pages/UploadPage';
@@ -17,6 +17,11 @@ function AppContent() {
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { profile, isAdmin } = useAuth(); // Get user profile and isAdmin flag
+
+  // Log profile and isAdmin for debugging
+  useEffect(() => {
+    console.log("App rendered with profile:", profile?.email, "isAdmin:", isAdmin);
+  }, [profile, isAdmin]);
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
@@ -112,9 +117,20 @@ function AppContent() {
   );
 }
 
-// App component remains the same
+// App component with better error handling
 function App() {
-  const { session } = useAuth();
+  const { session, loading } = useAuth();
+  
+  // Log session state for debugging
+  useEffect(() => {
+    console.log("App root rendered with session:", session ? "exists" : "none", "loading:", loading);
+  }, [session, loading]);
+
+  // If still loading, show nothing (AuthProvider already shows loading spinner)
+  if (loading) {
+    return null;
+  }
+
   return session ? <AppContent /> : <LoginPage />;
 }
 

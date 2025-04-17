@@ -40,7 +40,6 @@ export type UserProfile = User & {
   role?: 'admin' | 'operator'; // Add role from metadata
 };
 
-export type AuthChangeEvent = Parameters<ReturnType<typeof supabase.auth.onAuthStateChange>>[0];
 export type AuthSession = Session | null;
 // --- END Auth Types ---
 
@@ -285,42 +284,9 @@ export const signInWithPassword = async (email: string, password: string) => {
   return data;
 };
 
-// Add signUp function if needed
-// export const signUp = async (email, password, metadata) => { ... }
-
 export const signOut = async () => {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;
-};
-
-export const getSession = async (): Promise<AuthSession> => {
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error) {
-        console.error("Error getting session:", error);
-        return null;
-    }
-    return session;
-};
-
-export const getUser = async (): Promise<UserProfile | null> => {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error) {
-        console.error("Error getting user:", error);
-        return null;
-    }
-    if (user) {
-        // Combine user data with role from metadata
-        return {
-            ...user,
-            role: user.user_metadata?.role as ('admin' | 'operator' | undefined)
-        };
-    }
-    return null;
-};
-
-export const onAuthStateChange = (callback: (event: AuthChangeEvent, session: AuthSession) => void) => {
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(callback);
-  return subscription;
 };
 
 // --- END Auth Functions ---

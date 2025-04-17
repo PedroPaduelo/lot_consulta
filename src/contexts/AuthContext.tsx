@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
-import { supabase, getUser, getSession, onAuthStateChange, UserProfile, AuthSession, AuthChangeEvent } from '../utils/supabase';
-import Spinner from '../components/ui/Spinner'; // For loading state
+import { supabase, UserProfile, AuthSession } from '../utils/supabase';
+import Spinner from '../components/ui/Spinner';
 
 interface AuthContextType {
   session: AuthSession;
@@ -20,64 +20,88 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [session, setSession] = useState<AuthSession>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Função simplificada para extrair o perfil diretamente da sessão
+  const extractProfileFromSession = (currentSession: AuthSession): UserProfile | null => {
+    if (!currentSession?.user) return null;
+    
+    const user = currentSession.user;
+    console.log("Extracting profile from session user:", user.id);
+    console.log("User metadata:", user.user_metadata);
+    
+    // Criar o perfil com base no usuário da sessão
+    const userProfile: UserProfile = {
+      ...user,
+      role: user.user_metadata?.role as ('admin' | 'operator' | undefined)
+    };
+    
+    console.log("User role from metadata:", userProfile.role || "No role defined");
+    return userProfile;
+  };
 
   useEffect(() => {
-    const fetchInitialSession = async () => {
+    console.log("Setting up auth state...");
+    let authListener: { unsubscribe: () => void } | null = null;
+    
+    // Função para inicializar a autenticação
+    const initializeAuth = async () => {
       try {
-        console.log("Fetching initial session...");
-        const currentSession = await getSession();
-        console.log("Initial session:", currentSession ? "Found" : "Not found");
+        setLoading(true);
+        console.log("Getting initial session...");
         
+        // Obter sessão atual
+        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error("Error getting session:", sessionError);
+          setError("Erro ao recuperar sessão");
+          setLoading(false);
+          return;
+        }
+        
+        console.log("Initial session:", currentSession ? "Found" : "Not found");
         setSession(currentSession);
         
+        // Extrair perfil da sessão se existir
         if (currentSession?.user) {
-          console.log("Session has user, fetching profile...");
-          const userProfile = await getUser(); // Fetch user with metadata
-          console.log("User profile:", userProfile ? "Found" : "Not found", userProfile?.role);
+          const userProfile = extractProfileFromSession(currentSession);
           setProfile(userProfile);
-        } else {
-          console.log("No user in session");
         }
-      } catch (error) {
-        console.error("Error fetching initial session:", error);
+        
+        // Configurar listener para mudanças de autenticação
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+          console.log("Auth state change:", event);
+          setSession(newSession);
+          
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+            if (newSession?.user) {
+              const userProfile = extractProfileFromSession(newSession);
+              setProfile(userProfile);
+            }
+          } else if (event === 'SIGNED_OUT') {
+            setProfile(null);
+          }
+        });
+        
+        authListener = subscription;
+      } catch (err) {
+        console.error("Error initializing auth:", err);
+        setError("Erro ao inicializar autenticação");
       } finally {
-        console.log("Initial session fetch complete, setting loading to false");
         setLoading(false);
       }
     };
-
-    fetchInitialSession();
-
-    const subscription = onAuthStateChange(async (event: AuthChangeEvent, currentSession: AuthSession) => {
-      console.log('Auth event:', event, currentSession ? "Session exists" : "No session");
-      setSession(currentSession);
-      
-      if (event === 'SIGNED_IN' && currentSession?.user) {
-        console.log("SIGNED_IN event detected, fetching user profile");
-        setLoading(true); // Set loading while fetching profile
-        const userProfile = await getUser();
-        console.log("User profile after sign in:", userProfile?.role);
-        setProfile(userProfile);
-        setLoading(false);
-      } else if (event === 'SIGNED_OUT') {
-        console.log("SIGNED_OUT event detected, clearing profile");
-        setProfile(null);
-      } else if (event === 'TOKEN_REFRESHED') {
-        console.log("TOKEN_REFRESHED event detected");
-        // No need to do anything special here, session is already updated
-      } else if (event === 'USER_UPDATED') {
-        console.log("USER_UPDATED event detected, refreshing profile");
-        setLoading(true);
-        const userProfile = await getUser();
-        setProfile(userProfile);
-        setLoading(false);
-      }
-    });
-
-    // Cleanup subscription on unmount
+    
+    // Inicializar autenticação
+    initializeAuth();
+    
+    // Cleanup
     return () => {
       console.log("Cleaning up auth subscription");
-      subscription?.unsubscribe();
+      if (authListener) {
+        authListener.unsubscribe();
+      }
     };
   }, []);
 
@@ -85,10 +109,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log("Signing out...");
       await supabase.auth.signOut();
-      // State updates (session, profile) handled by onAuthStateChange listener
     } catch (error) {
       console.error("Error signing out:", error);
-      // Handle sign-out error (e.g., show notification)
     }
   };
 
@@ -97,9 +119,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Show loading indicator while checking session/profile
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background-light dark:bg-background-dark">
+      <div className="flex flex-col items-center justify-center h-screen bg-background-light dark:bg-background-dark">
         <Spinner size="lg" />
-        <p className="ml-3 text-text-primary-light dark:text-text-primary-dark">Carregando...</p>
+        <p className="mt-3 text-text-primary-light dark:text-text-primary-dark">Carregando...</p>
+        {error && (
+          <p className="mt-2 text-red-500 dark:text-red-400 text-sm">{error}</p>
+        )}
       </div>
     );
   }
