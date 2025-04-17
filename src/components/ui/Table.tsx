@@ -8,22 +8,23 @@ interface TableProps {
 
 const Table: React.FC<TableProps> = ({ headers, children, className = '' }) => {
   return (
-    <div className={`overflow-x-auto ${className}`}>
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+    <div className={`overflow-x-auto border border-border-light dark:border-border-dark rounded-lg ${className}`}> {/* Added border and rounded */}
+      <table className="min-w-full divide-y divide-border-light dark:divide-border-dark">
+        <thead className="bg-muted-light dark:bg-muted-dark">
           <tr>
             {headers.map((header, index) => (
-              <th 
-                key={index} 
-                scope="col" 
-                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+              <th
+                key={index}
+                scope="col"
+                className="px-6 py-3 text-left text-xs font-medium text-text-secondary-light dark:text-text-secondary-dark uppercase tracking-wider"
               >
                 {header}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
+        {/* Apply surface color to tbody */}
+        <tbody className="bg-surface-light dark:bg-surface-dark divide-y divide-border-light dark:divide-border-dark">
           {children}
         </tbody>
       </table>
