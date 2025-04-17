@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, Session, User } from '@supabase/supabase-js';
 
 // --- START Enhanced Environment Variable Debugging ---
 console.log('[DEBUG] Reading environment variables...');
@@ -28,12 +28,22 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true
+    detectSessionInUrl: true // Changed from false to true, standard practice
   }
 });
 
 // Log connection status for debugging
 console.log('Supabase client initialized instance:', supabase ? 'OK' : 'Failed');
+
+// --- START Auth Types ---
+export type UserProfile = User & {
+  role?: 'admin' | 'operator'; // Add role from metadata
+};
+
+export type AuthChangeEvent = Parameters<ReturnType<typeof supabase.auth.onAuthStateChange>>[0];
+export type AuthSession = Session | null;
+// --- END Auth Types ---
+
 
 // Define types for database tables
 export type Batch = {
@@ -46,6 +56,7 @@ export type Batch = {
   invalid_cpfs: number;
   status: 'Pendente' | 'Em execução' | 'Finalizado' | 'Pausado' | 'Erro'; // Updated status values
   id_execucao: string | null; // Added execution ID field
+  user_id: string | null; // Added user_id field
   created_at: string;
   updated_at: string;
 };
@@ -65,68 +76,70 @@ export type CPFRecord = {
 };
 
 // Helper function to create a new batch
-export async function createBatch(batchData: Omit<Batch, 'id' | 'created_at' | 'updated_at' | 'id_execucao'>): Promise<Batch | null> { // Exclude id_execucao from input
+// No change needed here as user_id defaults to auth.uid() in the database
+export async function createBatch(batchData: Omit<Batch, 'id' | 'created_at' | 'updated_at' | 'id_execucao' | 'user_id'>): Promise<Batch | null> {
   try {
-    console.log('Creating batch with data:', batchData);
+    console.log('Creating batch with data (user_id will be set by DB):', batchData);
 
-    // Ensure status is one of the allowed Batch status types
-    const batchToInsert: Omit<Batch, 'id' | 'created_at' | 'updated_at' | 'id_execucao'> & { status: Batch['status'] } = {
+    const batchToInsert: Omit<Batch, 'id' | 'created_at' | 'updated_at' | 'id_execucao' | 'user_id'> & { status: Batch['status'] } = {
         ...batchData,
-        status: batchData.status || 'Pendente' // Default to Pendente if not provided
+        status: batchData.status || 'Pendente'
     };
-
 
     const { data, error } = await supabase
       .from('batches')
-      .insert(batchToInsert) // Insert data with explicit status
+      .insert(batchToInsert)
       .select()
       .single();
 
     if (error) {
       console.error('Error creating batch:', error);
-      return null;
+      // Check for RLS violation error
+      if (error.code === '42501' || error.message.includes('policy')) {
+         throw new Error(`Erro de permissão ao criar lote: ${error.message}. Verifique se está autenticado.`);
+      }
+      return null; // Return null for other errors, or rethrow specific ones
     }
 
     console.log('Batch created successfully:', data);
-    // The returned data should include the id_execucao if the DB sets it (e.g., via trigger or default)
-    // Otherwise, it might be null initially.
-    return data as Batch; // Cast to Batch to include id_execucao potentially being null
+    return data as Batch;
   } catch (err) {
     console.error('Exception creating batch:', err);
-    return null;
+    // Re-throw the error to be handled by the caller (e.g., UploadPage)
+    throw err;
   }
 }
 
 // Helper function to create CPF records
-// Adjusted to match the updated CPFRecord type
+// No change needed here, RLS on INSERT checks batch ownership
 export async function createCPFRecords(records: Array<Omit<CPFRecord, 'id' | 'created_at' | 'updated_at' | 'status' | 'result'>>): Promise<boolean> {
   try {
     console.log(`Creating ${records.length} CPF records`);
 
-    // Map input records to the full DB structure with defaults
     const recordsToInsert = records.map(record => ({
       batch_id: record.batch_id,
-      cpf: record.cpf, // Assuming clean CPF is passed
+      cpf: record.cpf,
       nome: record.nome,
-      telefone: record.telefone || null, // Ensure null if empty
+      telefone: record.telefone || null,
       is_valid: record.is_valid,
-      status: 'Pendente' as const, // Default status for CPF records
-      result: null // Default result
+      status: 'Pendente' as const,
+      result: null
     }));
 
-
-    // Insert in smaller batches to avoid payload size limits
-    const batchSize = 100; // Supabase recommends batches of < 1500 rows
+    const batchSize = 100;
     for (let i = 0; i < recordsToInsert.length; i += batchSize) {
       const batch = recordsToInsert.slice(i, i + batchSize);
-
       const { error } = await supabase
         .from('cpf_records')
-        .insert(batch); // Insert the mapped batch
+        .insert(batch);
 
       if (error) {
         console.error(`Error creating CPF records batch ${Math.floor(i / batchSize) + 1}:`, error);
-        return false; // Stop if any batch fails
+         // Check for RLS violation error
+        if (error.code === '42501' || error.message.includes('policy')) {
+            throw new Error(`Erro de permissão ao criar registros CPF: ${error.message}. Verifique se o lote pertence a você.`);
+        }
+        return false;
       }
     }
 
@@ -134,7 +147,8 @@ export async function createCPFRecords(records: Array<Omit<CPFRecord, 'id' | 'cr
     return true;
   } catch (err) {
     console.error('Exception creating CPF records:', err);
-    return false;
+    // Re-throw the error to be handled by the caller
+    throw err;
   }
 }
 
@@ -143,44 +157,41 @@ export async function createCPFRecords(records: Array<Omit<CPFRecord, 'id' | 'cr
 export async function checkSupabaseConnection(): Promise<{ connected: boolean; error?: string }> {
   try {
     console.log('Attempting Supabase connection check...');
-    
-    // Try a direct query to the batches table
-    const { error } = await supabase
-      .from('batches')
-      .select('id')
-      .limit(1);
 
+    // Try a direct query to the batches table
+    // Use head: true for a faster check that doesn't return data
+    const { error, count } = await supabase
+      .from('batches')
+      .select('id', { count: 'exact', head: true })
+      .limit(1); // Limit 1 is implicit with head:true, but added for clarity
+
+    // Analyze the error
     if (error) {
-      // If the batches table doesn't exist yet, that's okay for connection check
-      if (error.code === '42P01') { // Relation does not exist
-        console.log('Batches table not found, but connection is working');
+      // If the batches table doesn't exist yet (42P01) or access is denied (42501),
+      // the connection itself is likely working.
+      if (error.code === '42P01' || error.code === '42501') {
+        console.log(`Connection check OK, but encountered error accessing 'batches': ${error.message} (Code: ${error.code})`);
         return { connected: true };
       }
-      
-      // Log the specific error for better debugging
+
+      // Log other specific errors for better debugging
       console.error('Supabase connection check failed:', error);
-      
+
       // Check for common network errors
       if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
         return { connected: false, error: `Falha de rede ao conectar ao Supabase. Verifique a URL e a conexão com a internet. (${error.message})` };
       }
-      
+
       // Check for potential authentication/key errors
       if (error.message.includes('Invalid API key') || error.message.includes('Unauthorized')) {
          return { connected: false, error: `Chave de API Supabase inválida ou não autorizada. Verifique VITE_SUPABASE_ANON_KEY. (${error.message})` };
       }
-      
+
       // Check for URL/Host errors
       if (error.message.includes('hostname') || error.message.includes('URL')) {
          return { connected: false, error: `URL do Supabase inválida ou inacessível. Verifique VITE_SUPABASE_URL. (${error.message})` };
       }
-      
-      // Permission errors are okay for connection check
-      if (error.message.includes('permission denied')) {
-        console.log('Permission denied, but connection is working');
-        return { connected: true };
-      }
-      
+
       // Other Supabase errors
       return { connected: false, error: `Erro ao comunicar com Supabase: ${error.message}` };
     }
@@ -220,8 +231,9 @@ export async function checkTablesExist(): Promise<{
       console.warn('Error checking batches table:', batchesResult.error);
       if (batchesResult.error.code === '42P01') { // Relation does not exist
         result.batches.error = 'Tabela "batches" não encontrada.';
-      } else if (batchesResult.error.message.includes('permission denied')) {
+      } else if (batchesResult.error.code === '42501' || batchesResult.error.message.includes('permission denied')) { // Check code 42501 too
          result.batches.error = 'Permissão negada para acessar a tabela "batches". Verifique as políticas RLS.';
+         result.batches.exists = true; // Table exists but access denied
       } else {
         result.batches.error = `Erro ao verificar tabela "batches": ${batchesResult.error.message}`;
       }
@@ -239,8 +251,9 @@ export async function checkTablesExist(): Promise<{
        console.warn('Error checking cpf_records table:', cpfRecordsResult.error);
        if (cpfRecordsResult.error.code === '42P01') { // Relation does not exist
          result.cpf_records.error = 'Tabela "cpf_records" não encontrada.';
-       } else if (cpfRecordsResult.error.message.includes('permission denied')) {
+       } else if (cpfRecordsResult.error.code === '42501' || cpfRecordsResult.error.message.includes('permission denied')) {
           result.cpf_records.error = 'Permissão negada para acessar a tabela "cpf_records". Verifique as políticas RLS.';
+          result.cpf_records.exists = true; // Table exists but access denied
        } else {
          result.cpf_records.error = `Erro ao verificar tabela "cpf_records": ${cpfRecordsResult.error.message}`;
        }
@@ -260,3 +273,54 @@ export async function checkTablesExist(): Promise<{
     return result;
   }
 }
+
+// --- START Auth Functions ---
+
+export const signInWithPassword = async (email: string, password: string) => {
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email,
+    password,
+  });
+  if (error) throw error;
+  return data;
+};
+
+// Add signUp function if needed
+// export const signUp = async (email, password, metadata) => { ... }
+
+export const signOut = async () => {
+  const { error } = await supabase.auth.signOut();
+  if (error) throw error;
+};
+
+export const getSession = async (): Promise<AuthSession> => {
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error) {
+        console.error("Error getting session:", error);
+        return null;
+    }
+    return session;
+};
+
+export const getUser = async (): Promise<UserProfile | null> => {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) {
+        console.error("Error getting user:", error);
+        return null;
+    }
+    if (user) {
+        // Combine user data with role from metadata
+        return {
+            ...user,
+            role: user.user_metadata?.role as ('admin' | 'operator' | undefined)
+        };
+    }
+    return null;
+};
+
+export const onAuthStateChange = (callback: (event: AuthChangeEvent, session: AuthSession) => void) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange(callback);
+  return subscription;
+};
+
+// --- END Auth Functions ---

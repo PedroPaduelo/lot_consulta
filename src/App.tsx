@@ -1,36 +1,45 @@
 import React, { useState } from 'react';
-import { FileSpreadsheet, Search, Menu, X, List } from 'lucide-react';
+import { FileSpreadsheet, Search, Menu, X, List, UserPlus } from 'lucide-react'; // Added UserPlus
 import Sidebar from './components/Sidebar';
 import UploadPage from './pages/UploadPage';
 import ConsultaPage from './pages/ConsultaPage';
 import BatchesPage from './pages/BatchesPage';
-import BatchDetailsPage from './pages/BatchDetailsPage'; // Import BatchDetailsPage
+import BatchDetailsPage from './pages/BatchDetailsPage';
+import LoginPage from './pages/LoginPage';
+import UserManagementPage from './pages/UserManagementPage'; // Import User Management Page
+import { useAuth } from './contexts/AuthContext';
 
-// Define allowed page types + detail view
-type PageType = 'upload' | 'consulta' | 'lotes' | 'loteDetalhes';
+// Define allowed page types including user management
+type PageType = 'upload' | 'consulta' | 'lotes' | 'loteDetalhes' | 'userManagement';
 
-function App() {
+function AppContent() {
   const [currentPage, setCurrentPage] = useState<PageType>('upload');
-  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null); // State for selected batch ID
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { profile, isAdmin } = useAuth(); // Get user profile and isAdmin flag
 
   const toggleSidebar = () => {
     setSidebarOpen(!sidebarOpen);
   };
 
-  // Function to navigate to batch details
   const viewBatchDetails = (batchId: string) => {
     setSelectedBatchId(batchId);
     setCurrentPage('loteDetalhes');
   };
 
-  // Function to go back to the batches list
   const goBackToBatches = () => {
     setSelectedBatchId(null);
     setCurrentPage('lotes');
   };
 
-  // Function to render the current page component
+  // Function to navigate back from UserManagement or BatchDetails
+  const handleBackNavigation = () => {
+      // Default back to 'upload' or maybe 'lotes' if coming from details?
+      // For simplicity, let's default back to 'upload' unless we add more complex state.
+      setCurrentPage('upload');
+  };
+
+
   const renderPage = () => {
     switch (currentPage) {
       case 'upload':
@@ -38,23 +47,32 @@ function App() {
       case 'consulta':
         return <ConsultaPage />;
       case 'lotes':
-        // Pass viewBatchDetails function to BatchesPage
         return <BatchesPage onViewDetails={viewBatchDetails} />;
       case 'loteDetalhes':
-        // Render BatchDetailsPage only if an ID is selected
         return selectedBatchId ? (
           <BatchDetailsPage batchId={selectedBatchId} onBack={goBackToBatches} />
         ) : (
-          // Fallback if no ID (shouldn't happen with proper flow)
-          <BatchesPage onViewDetails={viewBatchDetails} />
+          <BatchesPage onViewDetails={viewBatchDetails} /> // Fallback
         );
+      case 'userManagement':
+        // Ensure only admins can access this page directly
+        return isAdmin ? <UserManagementPage onBack={handleBackNavigation} /> : <UploadPage />; // Redirect non-admins
       default:
-        return <UploadPage />; // Default to upload page
+        return <UploadPage />;
     }
   };
 
+  // Determine the active page for the sidebar highlight
+  const getSidebarActivePage = (): 'upload' | 'consulta' | 'lotes' | 'userManagement' => {
+      if (currentPage === 'loteDetalhes') return 'lotes';
+      if (currentPage === 'userManagement') return 'userManagement';
+      if (currentPage === 'consulta') return 'consulta';
+      if (currentPage === 'lotes') return 'lotes';
+      return 'upload'; // Default
+  };
+
+
   return (
-    // Use defined theme colors
     <div className="flex h-screen bg-background-light dark:bg-background-dark text-text-primary-light dark:text-text-primary-dark transition-colors duration-200">
       {/* Mobile sidebar toggle */}
       <button
@@ -66,27 +84,38 @@ function App() {
 
       {/* Sidebar */}
       <Sidebar
-        // Adjust currentPage prop if needed, maybe disable sidebar items on detail page?
-        currentPage={currentPage === 'loteDetalhes' ? 'lotes' : currentPage} // Keep 'lotes' active when viewing details
+        currentPage={getSidebarActivePage()}
         setCurrentPage={(page) => {
             // Reset batch ID if navigating away from details via sidebar
             if (currentPage === 'loteDetalhes' && page !== 'lotes') {
                 setSelectedBatchId(null);
             }
-            setCurrentPage(page);
+            // Ensure only admins can navigate to user management
+            if (page === 'userManagement' && !isAdmin) {
+                setCurrentPage('upload'); // Or show an error/redirect
+            } else {
+                setCurrentPage(page);
+            }
         }}
         isOpen={sidebarOpen}
         closeSidebar={() => setSidebarOpen(false)}
+        userProfile={profile}
       />
 
       {/* Main content */}
       <div className="flex-1 overflow-y-auto">
         <main className="container mx-auto px-4 py-8">
-          {renderPage()} {/* Render the selected page */}
+          {renderPage()}
         </main>
       </div>
     </div>
   );
+}
+
+// App component remains the same
+function App() {
+  const { session } = useAuth();
+  return session ? <AppContent /> : <LoginPage />;
 }
 
 export default App;
