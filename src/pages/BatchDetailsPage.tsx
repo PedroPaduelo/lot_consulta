@@ -54,8 +54,13 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
   // Function to calculate progress
   const calculateProgress = (currentPendingCount: number | null, totalCpfs: number | undefined) => {
     if (currentPendingCount === null || totalCpfs === undefined || totalCpfs === 0) {
+      // If batch is finalized, progress is 100% regardless of count
+      if (batch?.status === 'Finalizado') return 100;
       return 0;
     }
+    // If batch is finalized, progress is 100%
+    if (batch?.status === 'Finalizado') return 100;
+
     const processedCount = totalCpfs - currentPendingCount;
     return Math.round((processedCount / totalCpfs) * 100);
   };
@@ -67,7 +72,7 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
         .from('cpf_records')
         .select('id', { count: 'exact', head: true })
         .eq('batch_id', currentBatchId)
-        .eq('status', 'pending');
+        .eq('status', 'Pendente'); // <-- CORRECTED: Use 'Pendente' (Uppercase P)
 
       if (countError) {
         console.error("Error fetching pending count:", countError);
@@ -75,6 +80,7 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
         return;
       }
 
+      console.log(`Fetched pending count for batch ${currentBatchId}: ${count}`); // Debug log
       setPendingCount(count ?? 0); // Update pending count state
 
     } catch (err) {
@@ -96,8 +102,11 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
 
   // Effect to update progress percentage whenever pendingCount or batch changes
   useEffect(() => {
-    setProgressPercent(calculateProgress(pendingCount, batch?.total_cpfs));
-  }, [pendingCount, batch]);
+    // Ensure batch is loaded before calculating progress based on its status
+    if (batch) {
+        setProgressPercent(calculateProgress(pendingCount, batch.total_cpfs));
+    }
+  }, [pendingCount, batch]); // Depend on batch as well for status check in calculateProgress
 
   // Effect to manage the polling interval
   useEffect(() => {
@@ -107,20 +116,41 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
       intervalRef.current = null;
     }
 
-    // Start polling only if batch exists and is processing
-    if (batch && batch.status === 'processing') {
+    // Determine if polling should be active
+    const shouldPoll = batch && batch.status !== 'Finalizado' && batch.status !== 'Erro';
+
+    if (shouldPoll) {
+      console.log(`Starting polling for batch ${batch.id} (status: ${batch.status})`);
       // Fetch immediately first time
       fetchPendingCount(batch.id);
 
       // Set up interval
       intervalRef.current = setInterval(() => {
+        console.log(`Polling pending count for batch ${batch.id}`);
         fetchPendingCount(batch.id);
       }, POLLING_INTERVAL_MS);
+
+    } else if (batch) {
+      // If batch is finished or errored, fetch the count one last time
+      // to ensure the final state is reflected.
+      console.log(`Polling stopped for batch ${batch.id} (status: ${batch.status}). Fetching final count.`);
+      fetchPendingCount(batch.id).then(() => {
+          // Progress calculation is handled by the other useEffect [pendingCount, batch]
+          // If status is Finalizado, explicitly set progress to 100 and pending to 0
+          if (batch.status === 'Finalizado') {
+              console.log(`Batch ${batch.id} is Finalizado. Setting progress to 100.`);
+              setPendingCount(0); // Ensure pending count is 0 for final state
+              setProgressPercent(100); // Explicitly set 100%
+          }
+      });
+    } else {
+        console.log("Polling not started: Batch data not available yet.");
     }
 
     // Cleanup function for interval
     return () => {
       if (intervalRef.current) {
+        console.log(`Clearing interval for batch ${batch?.id}`);
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
@@ -166,9 +196,10 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
          setCpfRecords(displayData);
 
          // Calculate initial pending count from fetched data
-         const initialPending = displayData.filter(r => r.status === 'pending').length;
+         const initialPending = displayData.filter(r => r.status === 'Pendente').length; // <-- CORRECTED: Use 'Pendente'
+         console.log(`Initial pending count from fetch: ${initialPending}`); // Debug log
          setPendingCount(initialPending);
-         // Initial progress is calculated by the other useEffect
+         // Initial progress is calculated by the other useEffect [pendingCount, batch]
       }
 
     } catch (err: any) {
@@ -271,11 +302,18 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
                   style={{ width: `${progressPercent}%` }}
                 ></div>
               </div>
-              {pendingCount !== null && (
+              {/* Show pending count only if batch is not finalized */}
+              {pendingCount !== null && batch.status !== 'Finalizado' && (
                 <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1 text-right">
-                  {batch.total_cpfs - pendingCount} de {batch.total_cpfs} consultados
+                  {batch.total_cpfs - pendingCount} de {batch.total_cpfs} consultados ({pendingCount} pendentes)
                 </p>
               )}
+               {/* Show different message if finalized */}
+               {batch.status === 'Finalizado' && (
+                 <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1 text-right">
+                   {batch.total_cpfs} de {batch.total_cpfs} consultados (Finalizado)
+                 </p>
+               )}
             </div>
           )}
         </div>
