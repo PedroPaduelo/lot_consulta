@@ -52,6 +52,8 @@ export type CPFRecord = {
 // Helper function to create a new batch
 export async function createBatch(batchData: Omit<Batch, 'id' | 'created_at' | 'updated_at'>): Promise<Batch | null> {
   try {
+    console.log('Creating batch with data:', batchData);
+    
     const { data, error } = await supabase
       .from('batches')
       .insert(batchData)
@@ -63,6 +65,7 @@ export async function createBatch(batchData: Omit<Batch, 'id' | 'created_at' | '
       return null;
     }
     
+    console.log('Batch created successfully:', data);
     return data;
   } catch (err) {
     console.error('Exception creating batch:', err);
@@ -73,19 +76,28 @@ export async function createBatch(batchData: Omit<Batch, 'id' | 'created_at' | '
 // Helper function to create CPF records
 export async function createCPFRecords(records: Omit<CPFRecord, 'id' | 'created_at' | 'updated_at' | 'status' | 'result'>[]): Promise<boolean> {
   try {
-    const { error } = await supabase
-      .from('cpf_records')
-      .insert(records.map(record => ({
-        ...record,
-        status: 'pending',
-        result: null
-      })));
+    console.log(`Creating ${records.length} CPF records`);
     
-    if (error) {
-      console.error('Error creating CPF records:', error);
-      return false;
+    // Insert in smaller batches to avoid payload size limits
+    const batchSize = 100;
+    for (let i = 0; i < records.length; i += batchSize) {
+      const batch = records.slice(i, i + batchSize);
+      
+      const { error } = await supabase
+        .from('cpf_records')
+        .insert(batch.map(record => ({
+          ...record,
+          status: 'pending',
+          result: null
+        })));
+      
+      if (error) {
+        console.error(`Error creating CPF records batch ${i / batchSize + 1}:`, error);
+        return false;
+      }
     }
     
+    console.log('All CPF records created successfully');
     return true;
   } catch (err) {
     console.error('Exception creating CPF records:', err);
@@ -96,6 +108,8 @@ export async function createCPFRecords(records: Omit<CPFRecord, 'id' | 'created_
 // Helper function to check if Supabase connection is working
 export async function checkSupabaseConnection(): Promise<boolean> {
   try {
+    console.log('Checking Supabase connection...');
+    
     // Try a simple query to check connection
     const { data, error } = await supabase
       .from('batches')
