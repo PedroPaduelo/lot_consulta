@@ -247,20 +247,20 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
   const actionsDisabled = isLoading || !dbStatus?.connected || !dbStatus.tables?.batches.exists;
 
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="space-y-8"> {/* Increased spacing */}
       {/* Database Status Checker will render its own Alerts */}
       <DatabaseStatusChecker onStatusChange={handleDatabaseStatusChange} />
 
-      <div className="bg-surface-light dark:bg-surface-dark rounded-lg shadow-md p-6 mb-6 border border-border-light dark:border-border-dark">
+      <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-6 border border-border-light dark:border-border-dark"> {/* Increased rounding, shadow */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
           <h1 className="text-2xl font-semibold text-text-primary-light dark:text-text-primary-dark flex items-center">
-            <List className="mr-2 h-6 w-6 text-primary-light dark:text-primary-dark" />
+            <List className="mr-3 h-6 w-6 text-primary-light dark:text-primary-dark" /> {/* Increased margin */}
             Lotes de Processamento
           </h1>
           <button
             onClick={fetchBatches}
             disabled={actionsDisabled} // Disable if loading or DB issues
-            className="px-4 py-2 bg-primary-light dark:bg-primary-dark text-white rounded-md hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 dark:focus:ring-offset-background-dark flex items-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="px-4 py-2 bg-primary-light dark:bg-primary-dark text-white rounded-lg font-medium text-sm hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 dark:focus:ring-offset-background-dark flex items-center disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out shadow-sm hover:shadow-md" // Adjusted styling
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
             {isLoading ? 'Atualizando...' : 'Atualizar'}
@@ -273,14 +273,14 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
 
 
         {isLoading && !batches.length ? ( // Show loading spinner only if loading initial data
-          <div className="text-center py-12">
+          <div className="text-center py-16"> {/* Increased padding */}
             <Spinner size="lg" />
-            <p className="mt-3 text-text-secondary-light dark:text-text-secondary-dark">Carregando lotes...</p>
+            <p className="mt-4 text-text-secondary-light dark:text-text-secondary-dark">Carregando lotes...</p> {/* Increased margin */}
           </div>
         ) : !isLoading && dbStatus?.connected && dbStatus.tables?.batches.exists && batches.length === 0 ? ( // Show no batches message only if connected and table exists
-          <div className="text-center py-12 bg-muted-light dark:bg-muted-dark rounded-lg border border-border-light dark:border-border-dark">
+          <div className="text-center py-16 px-6 bg-muted-light dark:bg-muted-dark rounded-lg border border-border-light dark:border-border-dark"> {/* Increased padding */}
             <AlertCircle className="h-12 w-12 mx-auto text-text-secondary-light dark:text-text-secondary-dark mb-4" />
-            <p className="text-text-primary-light dark:text-text-primary-dark">Nenhum lote encontrado.</p>
+            <p className="text-lg font-medium text-text-primary-light dark:text-text-primary-dark">Nenhum lote encontrado.</p> {/* Larger text */}
             <p className="text-text-secondary-light dark:text-text-secondary-dark text-sm mt-2">Faça upload de um arquivo Excel na tela de Upload para criar um novo lote.</p>
           </div>
         ) : dbStatus?.connected && dbStatus.tables?.batches.exists && batches.length > 0 ? ( // Show table only if connected, table exists, and batches are loaded
@@ -288,7 +288,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
             {/* Updated Table Headers */}
             <Table headers={['NOME', 'API', 'ARQUIVO', 'CPFs (V/I)', 'ID EXECUÇÃO', 'STATUS', 'CRIADO EM', 'AÇÕES']}>
               {paginatedData.map((batch) => (
-                <tr key={batch.id} className="hover:bg-muted-light dark:hover:bg-muted-dark transition-colors duration-150">
+                <tr key={batch.id} className="hover:bg-muted-light/70 dark:hover:bg-muted-dark/70 transition-colors duration-150"> {/* Subtle hover */}
                   {/* Name */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-primary-light dark:text-primary-dark hover:underline cursor-pointer max-w-[180px] truncate" title={batch.name} onClick={() => onViewDetails(batch.id)}>
                     {batch.name}
@@ -304,10 +304,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
                   {/* CPF Counts */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
                     {batch.total_cpfs || 0}
-                    <span className="text-xs ml-1">
-                      (<span className="text-green-600 dark:text-green-400">{batch.valid_cpfs || 0}</span>
+                    <span className="text-xs ml-1.5"> {/* Increased margin */}
+                      (<span className="text-green-600 dark:text-green-400 font-medium">{batch.valid_cpfs || 0}</span>
                       /
-                      <span className="text-red-600 dark:text-red-400">{batch.invalid_cpfs || 0}</span>)
+                      <span className="text-red-600 dark:text-red-400 font-medium">{batch.invalid_cpfs || 0}</span>)
                     </span>
                   </td>
                   {/* Execution ID */}
@@ -328,7 +328,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
                        {/* View Details Button */}
                        <button
                          onClick={() => onViewDetails(batch.id)}
-                         className="p-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 focus:outline-none transition-colors"
+                         className="p-1.5 rounded-md text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900/50 focus:outline-none transition-colors" // Added padding, hover bg
                          title="Visualizar detalhes"
                        >
                          <Eye className="h-5 w-5" />
@@ -338,7 +338,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
                         <button
                           onClick={() => handleStartJob(batch.id)}
                           disabled={startingJobId === batch.id || pausingJobId === batch.id || actionsDisabled} // Disable if starting, pausing or general actions disabled
-                          className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-wait"
+                          className="p-1.5 rounded-md text-green-600 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900/50 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-wait" // Added padding, hover bg
                           title="Iniciar processamento"
                         >
                           {startingJobId === batch.id ? <Spinner size="sm" color="blue" /> : <Play className="h-5 w-5" />}
@@ -347,17 +347,17 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
                         <button
                             onClick={() => handlePauseBatch(batch.id, batch.id_execucao)}
                             disabled={pausingJobId === batch.id || startingJobId === batch.id || !batch.id_execucao || actionsDisabled} // Disable if pausing, starting, no execution ID or general actions disabled
-                            className="p-1 text-yellow-600 hover:text-yellow-800 dark:text-yellow-400 dark:hover:text-yellow-300 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-wait"
+                            className="p-1.5 rounded-md text-yellow-600 hover:bg-yellow-100 dark:text-yellow-400 dark:hover:bg-yellow-900/50 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-wait" // Added padding, hover bg
                             title={!batch.id_execucao ? "ID de execução não disponível para pausar" : "Pausar processamento"}
                         >
                           {pausingJobId === batch.id ? <Spinner size="sm" color="yellow" /> : <Pause className="h-5 w-5" />}
                         </button>
-                      ) : ( <div className="w-7 h-7"></div> /* Placeholder for alignment */ )}
+                      ) : ( <div className="w-[34px] h-[34px]"></div> /* Placeholder for alignment (p-1.5 -> 6px padding, 20px icon -> 32px + 2px border?) */ )}
                       {/* Delete Button */}
                       <button
                         onClick={() => handleDeleteBatch(batch.id)}
                         disabled={startingJobId === batch.id || pausingJobId === batch.id || actionsDisabled} // Disable if any action is in progress or general actions disabled
-                        className="p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 focus:outline-none transition-colors disabled:opacity-50"
+                        className="p-1.5 rounded-md text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/50 focus:outline-none transition-colors disabled:opacity-50" // Added padding, hover bg
                         title="Excluir lote"
                       >
                         <Trash2 className="h-5 w-5" />
@@ -372,7 +372,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
         ) : null}
         {/* Message when DB connection/table check failed */}
         {!isLoading && (!dbStatus?.connected || !dbStatus.tables?.batches.exists) && (
-            <div className="text-center py-12 text-text-secondary-light dark:text-text-secondary-dark">
+            <div className="text-center py-16 text-text-secondary-light dark:text-text-secondary-dark"> {/* Increased padding */}
                 Não é possível exibir os lotes. Verifique o status do banco de dados acima.
             </div>
         )}

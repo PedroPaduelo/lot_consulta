@@ -332,9 +332,9 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
 
   if (isLoading) {
     return (
-      <div className="text-center py-12">
+      <div className="text-center py-16"> {/* Increased padding */}
         <Spinner size="lg" />
-        <p className="mt-3 text-text-secondary-light dark:text-text-secondary-dark">Carregando detalhes do lote...</p>
+        <p className="mt-4 text-text-secondary-light dark:text-text-secondary-dark">Carregando detalhes do lote...</p> {/* Increased margin */}
       </div>
     );
   }
@@ -344,13 +344,13 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8"> {/* Increased spacing */}
        {/* Back Button, Title, and Export Button */}
-       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4"> {/* Increased gap */}
          <div className="flex items-center">
              <button
                onClick={onBack}
-               className="p-2 rounded-md hover:bg-muted-light dark:hover:bg-muted-dark text-text-secondary-light dark:text-text-secondary-dark mr-3"
+               className="p-2 rounded-lg hover:bg-muted-light dark:hover:bg-muted-dark text-text-secondary-light dark:text-text-secondary-dark mr-3 transition-colors duration-150" // Rounded-lg, transition
                title="Voltar para a lista de lotes"
              >
                <ArrowLeft className="h-5 w-5" />
@@ -363,7 +363,7 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
          <button
             onClick={handleExportExcel}
             disabled={!canExport}
-            className="px-4 py-2 bg-green-600 dark:bg-green-700 text-white rounded-md hover:bg-green-700 dark:hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-green-600 focus:ring-offset-2 dark:focus:ring-offset-background-dark flex items-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+            className="px-4 py-2 bg-green-600 dark:bg-green-700 text-white rounded-lg font-medium hover:bg-green-700 dark:hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-green-600 focus:ring-offset-2 dark:focus:ring-offset-background-dark flex items-center disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out text-sm shadow-sm hover:shadow-md" // Adjusted styling
             title={!canExport && finalizedCount === 0 ? "Nenhum registro finalizado para exportar" : "Exportar registros finalizados para Excel"}
           >
             {isExporting ? (
@@ -385,10 +385,10 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
 
       {/* Batch Details Card */}
       {batch && (
-        <div className="bg-surface-light dark:bg-surface-dark rounded-lg shadow-md p-6 border border-border-light dark:border-border-dark">
-          <h2 className="text-xl font-semibold text-text-primary-light dark:text-text-primary-dark mb-5">{batch.name}</h2>
+        <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-6 border border-border-light dark:border-border-dark"> {/* Increased rounding, shadow */}
+          <h2 className="text-xl font-semibold text-text-primary-light dark:text-text-primary-dark mb-6">{batch.name}</h2> {/* Increased margin */}
           {/* Details Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-5 mb-6"> {/* Increased gap */}
             <DetailItem icon={FileText} label="Nome do Arquivo" value={batch.filename} />
             <DetailItem icon={Database} label="API Banco" value={batch.bank_api} />
             {/* Use StatusProcessingBadge for Batch Status */}
@@ -410,8 +410,8 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
 
           {/* Progress Bar Section - Conditionally render if total_cpfs > 0 */}
           {batch.total_cpfs > 0 && (
-            <div className="mt-4 pt-4 border-t border-border-light dark:border-border-dark">
-              <div className="flex justify-between items-center mb-1">
+            <div className="mt-6 pt-6 border-t border-border-light dark:border-border-dark"> {/* Increased margin */}
+              <div className="flex justify-between items-center mb-1.5"> {/* Increased margin */}
                 <p className="text-sm font-medium text-text-primary-light dark:text-text-primary-dark">Progresso da Consulta</p>
                 <p className="text-sm font-semibold text-primary-light dark:text-primary-dark">{progressPercent}%</p>
               </div>
@@ -423,13 +423,13 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
               </div>
               {/* Show pending count only if batch is not finalized */}
               {pendingCount !== null && batch.status !== 'Finalizado' && (
-                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1 text-right">
+                <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1.5 text-right"> {/* Increased margin */}
                   {batch.total_cpfs - pendingCount} de {batch.total_cpfs} consultados ({pendingCount} pendentes)
                 </p>
               )}
                {/* Show different message if finalized */}
                {batch.status === 'Finalizado' && (
-                 <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1 text-right">
+                 <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-1.5 text-right"> {/* Increased margin */}
                    {batch.total_cpfs} de {batch.total_cpfs} consultados (Finalizado)
                  </p>
                )}
@@ -439,27 +439,27 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
       )}
 
       {/* CPF Records Card */}
-      <div className="bg-surface-light dark:bg-surface-dark rounded-lg shadow-md p-6 border border-border-light dark:border-border-dark">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+      <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-6 border border-border-light dark:border-border-dark"> {/* Increased rounding, shadow */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-5 gap-4"> {/* Increased margin */}
             <h2 className="text-xl font-semibold text-text-primary-light dark:text-text-primary-dark">Registros de CPF ({filteredCpfRecords.length})</h2>
             {/* Filter Buttons (still filter by initial validation) */}
-            <div className="flex space-x-2">
-                 <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark self-center mr-2">Filtrar por validação inicial:</span>
+            <div className="flex space-x-2 flex-wrap gap-y-2"> {/* Added flex-wrap and gap-y */}
+                 <span className="text-sm text-text-secondary-light dark:text-text-secondary-dark self-center mr-2 whitespace-nowrap">Filtrar (Validação Inicial):</span>
                 <button
                     onClick={() => { setFilter('all'); setPage(1); }}
-                    className={`px-3 py-1 text-sm rounded-md transition-colors ${filter === 'all' ? 'bg-primary-light dark:bg-primary-dark text-white' : 'bg-muted-light dark:bg-muted-dark text-text-secondary-light dark:text-text-secondary-dark hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors duration-150 border ${filter === 'all' ? 'bg-primary-light dark:bg-primary-dark text-white border-primary-light dark:border-primary-dark' : 'bg-surface-light dark:bg-surface-dark border-border-light dark:border-border-dark text-text-secondary-light dark:text-text-secondary-dark hover:bg-muted-light dark:hover:bg-muted-dark hover:border-gray-400 dark:hover:border-gray-500'}`} // Improved styling
                 >
                     Todos
                 </button>
                 <button
                     onClick={() => { setFilter('valid'); setPage(1); }}
-                    className={`px-3 py-1 text-sm rounded-md transition-colors ${filter === 'valid' ? 'bg-green-600 text-white' : 'bg-muted-light dark:bg-muted-dark text-text-secondary-light dark:text-text-secondary-dark hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors duration-150 border ${filter === 'valid' ? 'bg-green-600 text-white border-green-600' : 'bg-surface-light dark:bg-surface-dark border-border-light dark:border-border-dark text-text-secondary-light dark:text-text-secondary-dark hover:bg-muted-light dark:hover:bg-muted-dark hover:border-gray-400 dark:hover:border-gray-500'}`} // Improved styling
                 >
                     Válidos
                 </button>
                 <button
                     onClick={() => { setFilter('invalid'); setPage(1); }}
-                    className={`px-3 py-1 text-sm rounded-md transition-colors ${filter === 'invalid' ? 'bg-red-600 text-white' : 'bg-muted-light dark:bg-muted-dark text-text-secondary-light dark:text-text-secondary-dark hover:bg-gray-200 dark:hover:bg-gray-600'}`}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors duration-150 border ${filter === 'invalid' ? 'bg-red-600 text-white border-red-600' : 'bg-surface-light dark:bg-surface-dark border-border-light dark:border-border-dark text-text-secondary-light dark:text-text-secondary-dark hover:bg-muted-light dark:hover:bg-muted-dark hover:border-gray-400 dark:hover:border-gray-500'}`} // Improved styling
                 >
                     Inválidos
                 </button>
@@ -469,7 +469,9 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
         {error && batch && <Alert type="warning" message={error} />}
 
         {cpfRecords.length === 0 && !error && (
-             <p className="text-center text-text-secondary-light dark:text-text-secondary-dark py-6">Nenhum registro de CPF encontrado para este lote.</p>
+             <p className="text-center text-text-secondary-light dark:text-text-secondary-dark py-8">
+               Nenhum registro de CPF encontrado para este lote. {/* Moved comment here */}
+             </p>
         )}
 
         {filteredCpfRecords.length > 0 && (
@@ -477,7 +479,7 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
             {/* Updated Table Headers */}
             <Table headers={['CPF', 'NOME', 'STATUS VALIDAÇÃO', 'STATUS PROCESSAMENTO', 'AÇÕES']}>
               {paginatedData.map((record) => (
-                <tr key={record.id} className={`hover:bg-muted-light dark:hover:bg-muted-dark transition-colors duration-150 ${!record.isValid ? 'opacity-70' : ''}`}> {/* Maybe just dim invalid ones? */}
+                <tr key={record.id} className={`hover:bg-muted-light/70 dark:hover:bg-muted-dark/70 transition-colors duration-150 ${!record.isValid ? 'opacity-70' : ''}`}> {/* Subtle hover */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark font-mono">
                     {formatCPF(record.cpf)}
                   </td>
@@ -486,7 +488,7 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
                   </td>
                   {/* Initial Validation Status */}
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <StatusBadge isValid={record.isValid} />
+                    <StatusBadge isValid={record.isValid} size="sm"/> {/* Small badge */}
                   </td>
                    {/* Processing Status */}
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -496,7 +498,7 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
                      <button
                         onClick={() => handleViewResult(record)}
-                        className="p-1 text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="p-1.5 rounded-md text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900/50 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed" // Added padding, hover bg
                         title="Visualizar resultado"
                         disabled={!record.result} // Disable if no result
                       >
@@ -517,7 +519,9 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
           </>
         )}
          {filteredCpfRecords.length === 0 && cpfRecords.length > 0 && filter !== 'all' && (
-             <p className="text-center text-text-secondary-light dark:text-text-secondary-dark py-6">Nenhum CPF com validação inicial '{filter === 'valid' ? 'Válido' : 'Inválido'}' encontrado neste lote.</p>
+             <p className="text-center text-text-secondary-light dark:text-text-secondary-dark py-8">
+               Nenhum CPF com validação inicial '{filter === 'valid' ? 'Válido' : 'Inválido'}' encontrado neste lote. {/* Moved comment here */}
+             </p>
          )}
       </div>
 

@@ -78,10 +78,10 @@ function AppContent() {
 
 
   return (
-    <div className="flex h-screen bg-background-light dark:bg-background-dark text-text-primary-light dark:text-text-primary-dark transition-colors duration-200">
+    <div className="flex h-screen bg-background-light dark:bg-background-dark text-text-primary-light dark:text-text-primary-dark">
       {/* Mobile sidebar toggle */}
       <button
-        className="lg:hidden fixed z-20 top-4 left-4 p-2 rounded-md bg-surface-light dark:bg-surface-dark shadow-md text-text-primary-light dark:text-text-primary-dark"
+        className="lg:hidden fixed z-30 top-4 left-4 p-2 rounded-md bg-surface-light dark:bg-surface-dark shadow-lg text-text-primary-light dark:text-text-primary-dark border border-border-light dark:border-border-dark" // Increased z-index, added border
         onClick={toggleSidebar}
       >
         {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
@@ -101,6 +101,10 @@ function AppContent() {
             } else {
                 setCurrentPage(page);
             }
+            // Close sidebar on navigation in mobile view
+            if (window.innerWidth < 1024) {
+                setSidebarOpen(false);
+            }
         }}
         isOpen={sidebarOpen}
         closeSidebar={() => setSidebarOpen(false)}
@@ -108,8 +112,8 @@ function AppContent() {
       />
 
       {/* Main content */}
-      <div className="flex-1 overflow-y-auto">
-        <main className="container mx-auto px-4 py-8">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8"> {/* Added padding */}
+        <main className="container mx-auto"> {/* Removed extra padding here */}
           {renderPage()}
         </main>
       </div>
@@ -120,7 +124,7 @@ function AppContent() {
 // App component with better error handling
 function App() {
   const { session, loading } = useAuth();
-  
+
   // Log session state for debugging
   useEffect(() => {
     console.log("App root rendered with session:", session ? "exists" : "none", "loading:", loading);

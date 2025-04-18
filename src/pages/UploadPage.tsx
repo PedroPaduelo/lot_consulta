@@ -209,14 +209,14 @@ const UploadPage: React.FC = () => {
   const isSaveDisabled = !dbStatus || !dbStatus.connected || !dbStatus.tables?.batches.exists || !dbStatus.tables?.cpf_records.exists;
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="space-y-8"> {/* Increased spacing between sections */}
       {/* Database Status Checker will render its own Alerts */}
       <DatabaseStatusChecker onStatusChange={handleDatabaseStatusChange} />
 
       {/* Themed Upload Card */}
-      <div className="bg-surface-light dark:bg-surface-dark rounded-lg shadow-md p-6 mb-6 border border-border-light dark:border-border-dark">
-        <h1 className="text-2xl font-semibold text-text-primary-light dark:text-text-primary-dark mb-4">Upload de Arquivo Excel</h1>
-        <p className="text-text-secondary-light dark:text-text-secondary-dark mb-6">
+      <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-6 border border-border-light dark:border-border-dark"> {/* Increased rounding, shadow */}
+        <h1 className="text-2xl font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">Upload de Arquivo Excel</h1> {/* Reduced margin */}
+        <p className="text-text-secondary-light dark:text-text-secondary-dark mb-6 text-sm"> {/* Smaller text */}
           Faça upload de um arquivo Excel (.xlsx ou .xls) contendo CPFs para validação. O sistema tentará identificar a coluna de CPF automaticamente.
         </p>
 
@@ -231,14 +231,14 @@ const UploadPage: React.FC = () => {
 
         {/* Display file processing/saving errors/success */}
         {error && <Alert type="error" message={error} />}
-        {success && <Alert type="success" message={success} />}
+        {success && !isLoading && data.length === 0 && <Alert type="success" message={success} />} {/* Show success only after save */}
       </div>
 
       {/* Results Section - Only show if data exists and not loading */}
       {!isLoading && data.length > 0 && (
-        <div className="space-y-6"> {/* Added space between elements */}
+        <div className="space-y-8"> {/* Increased spacing */}
           {/* Themed Validation Summary Card */}
-          <div className="bg-surface-light dark:bg-surface-dark rounded-lg shadow-md p-6 border border-border-light dark:border-border-dark">
+          <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-6 border border-border-light dark:border-border-dark"> {/* Increased rounding, shadow */}
             <h2 className="text-xl font-semibold text-text-primary-light dark:text-text-primary-dark mb-4">Resumo da Validação</h2>
             <ValidationSummary validCount={validCount} invalidCount={invalidCount} />
           </div>

@@ -28,27 +28,13 @@ export default {
         'border-dark': '#374151',       // gray-700
         'muted-dark': '#374151',        // gray-700
       },
-      // Example: Define semantic color names if needed
-      // backgroundColor: theme => ({
-      //   ...theme('colors'),
-      //   'app-bg': theme('colors.background-light'),
-      //   'app-bg-dark': theme('colors.background-dark'),
-      //   'card-bg': theme('colors.surface-light'),
-      //   'card-bg-dark': theme('colors.surface-dark'),
-      // }),
-      // textColor: theme => ({
-      //   ...theme('colors'),
-      //   'base': theme('colors.text-primary-light'),
-      //   'base-dark': theme('colors.text-primary-dark'),
-      //   'muted': theme('colors.text-secondary-light'),
-      //   'muted-dark': theme('colors.text-secondary-dark'),
-      // }),
-      // borderColor: theme => ({
-      //   ...theme('colors'),
-      //   'default': theme('colors.border-light'),
-      //   'default-dark': theme('colors.border-dark'),
-      // })
+      boxShadow: {
+         'card': '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)', // Example subtle shadow
+         'card-dark': '0 4px 6px -1px rgb(0 0 0 / 0.2), 0 2px 4px -2px rgb(0 0 0 / 0.2)', // Slightly adjusted for dark
+      }
     },
   },
-  plugins: [],
+  plugins: [
+    require('@tailwindcss/forms'), // Added forms plugin
+  ],
 }

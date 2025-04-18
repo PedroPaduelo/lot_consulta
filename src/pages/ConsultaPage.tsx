@@ -95,18 +95,18 @@ const ConsultaPage: React.FC = () => {
 
     switch (situacao) {
       case 'regular':
-        themeClasses = "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300";
-        icon = <CheckCircle className="h-4 w-4 mr-1" />;
+        themeClasses = "bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300 border border-green-300 dark:border-green-700"; // Adjusted dark bg, added border
+        icon = <CheckCircle className="h-4 w-4 mr-1.5" />; // Increased margin
         text = "Regular";
         break;
       case 'irregular':
-        themeClasses = "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300";
-        icon = <AlertCircle className="h-4 w-4 mr-1" />;
+        themeClasses = "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300 border border-red-300 dark:border-red-700"; // Adjusted dark bg, added border
+        icon = <AlertCircle className="h-4 w-4 mr-1.5" />; // Increased margin
         text = "Irregular";
         break;
       case 'pendente':
-        themeClasses = "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300";
-        icon = <AlertCircle className="h-4 w-4 mr-1" />;
+        themeClasses = "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300 border border-yellow-300 dark:border-yellow-700"; // Adjusted dark bg, added border
+        icon = <AlertCircle className="h-4 w-4 mr-1.5" />; // Increased margin
         text = "Pendente";
         break;
     }
@@ -119,18 +119,18 @@ const ConsultaPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="space-y-8"> {/* Increased spacing */}
       {/* Themed consultation form card */}
-      <div className="bg-surface-light dark:bg-surface-dark rounded-lg shadow-md p-6 mb-6 border border-border-light dark:border-border-dark">
-        <h1 className="text-2xl font-semibold text-text-primary-light dark:text-text-primary-dark mb-4">Consulta de CPF</h1>
-        <p className="text-text-secondary-light dark:text-text-secondary-dark mb-6">
+      <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-6 border border-border-light dark:border-border-dark"> {/* Increased rounding, shadow */}
+        <h1 className="text-2xl font-semibold text-text-primary-light dark:text-text-primary-dark mb-2">Consulta de CPF</h1> {/* Reduced margin */}
+        <p className="text-text-secondary-light dark:text-text-secondary-dark mb-6 text-sm"> {/* Smaller text */}
           Consulte informações detalhadas de um CPF no banco de dados (simulado).
         </p>
 
         <form onSubmit={handleConsulta}>
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-end"> {/* Align items end */}
             <div className="flex-grow">
-              <label htmlFor="cpf" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+              <label htmlFor="cpf" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5"> {/* Increased margin */}
                 CPF
               </label>
               {/* Themed input */}
@@ -140,15 +140,15 @@ const ConsultaPage: React.FC = () => {
                 value={cpf}
                 onChange={handleCPFChange}
                 placeholder="000.000.000-00"
-                className="w-full px-4 py-2 border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark bg-surface-light dark:bg-surface-dark text-text-primary-light dark:text-text-primary-dark"
+                className="form-input w-full px-4 py-2 border-border-light dark:border-border-dark rounded-lg focus:border-primary-light focus:ring-primary-light dark:focus:border-primary-dark dark:focus:ring-primary-dark bg-surface-light dark:bg-surface-dark text-text-primary-light dark:text-text-primary-dark transition duration-150 ease-in-out" // Use form-input, rounded-lg
                 maxLength={14}
               />
             </div>
-            <div className="sm:self-end">
+            <div className="sm:self-end flex-shrink-0 w-full sm:w-auto"> {/* Ensure button doesn't shrink too much */}
               {/* Themed button */}
               <button
                 type="submit"
-                className="w-full sm:w-auto px-6 py-2 bg-primary-light dark:bg-primary-dark text-white rounded-md hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 dark:focus:ring-offset-background-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
+                className="w-full sm:w-auto px-6 py-2.5 bg-primary-light dark:bg-primary-dark text-white rounded-lg font-semibold hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 dark:focus:ring-offset-background-dark disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 ease-in-out shadow-sm hover:shadow-md" // Adjusted padding, rounded-lg, shadow
                 disabled={isLoading || cpf.replace(/\D/g, '').length !== 11}
               >
                 {isLoading ? (
@@ -168,15 +168,15 @@ const ConsultaPage: React.FC = () => {
 
       {/* Loading State */}
       {isLoading && (
-         <div className="text-center py-8">
+         <div className="text-center py-12"> {/* Increased padding */}
             <Spinner size="lg" />
-            <p className="mt-3 text-text-secondary-light dark:text-text-secondary-dark">Consultando...</p>
+            <p className="mt-4 text-text-secondary-light dark:text-text-secondary-dark">Consultando...</p> {/* Increased margin */}
           </div>
       )}
 
       {/* Themed result card */}
       {result && !isLoading && (
-        <div className="bg-surface-light dark:bg-surface-dark rounded-lg shadow-md p-6 border border-border-light dark:border-border-dark">
+        <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-6 border border-border-light dark:border-border-dark"> {/* Increased rounding, shadow */}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
             <h2 className="text-xl font-semibold text-text-primary-light dark:text-text-primary-dark">Resultado da Consulta</h2>
             {getSituacaoBadge(result.situacao)}
@@ -184,7 +184,7 @@ const ConsultaPage: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5"> {/* Adjusted gap */}
             {/* Info Item */}
-            <div className="flex items-start">
+            <div className="flex items-start space-x-3"> {/* Added space */}
               <User className="h-5 w-5 text-text-secondary-light dark:text-text-secondary-dark mr-3 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Nome Completo</p>
@@ -192,7 +192,7 @@ const ConsultaPage: React.FC = () => {
               </div>
             </div>
             {/* Info Item */}
-            <div className="flex items-start">
+            <div className="flex items-start space-x-3"> {/* Added space */}
               <MapPin className="h-5 w-5 text-text-secondary-light dark:text-text-secondary-dark mr-3 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Endereço</p>
@@ -200,7 +200,7 @@ const ConsultaPage: React.FC = () => {
               </div>
             </div>
              {/* Info Item */}
-            <div className="flex items-start">
+            <div className="flex items-start space-x-3"> {/* Added space */}
               <Calendar className="h-5 w-5 text-text-secondary-light dark:text-text-secondary-dark mr-3 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Data de Nascimento</p>
@@ -208,7 +208,7 @@ const ConsultaPage: React.FC = () => {
               </div>
             </div>
             {/* Info Item */}
-            <div className="flex items-start">
+            <div className="flex items-start space-x-3"> {/* Added space */}
               <Briefcase className="h-5 w-5 text-text-secondary-light dark:text-text-secondary-dark mr-3 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Profissão</p>
@@ -216,7 +216,7 @@ const ConsultaPage: React.FC = () => {
               </div>
             </div>
             {/* Info Item */}
-            <div className="flex items-start">
+            <div className="flex items-start space-x-3"> {/* Added space */}
               <Phone className="h-5 w-5 text-text-secondary-light dark:text-text-secondary-dark mr-3 mt-0.5 flex-shrink-0" />
               <div>
                 <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Telefone</p>
@@ -224,7 +224,7 @@ const ConsultaPage: React.FC = () => {
               </div>
             </div>
              {/* Info Item */}
-             <div className="flex items-start">
+             <div className="flex items-start space-x-3"> {/* Added space */}
                 <div className="h-5 w-5 flex items-center justify-center text-text-secondary-light dark:text-text-secondary-dark mr-3 mt-0.5 flex-shrink-0">
                   <span className="text-xs font-bold">CPF</span>
                 </div>
@@ -236,14 +236,14 @@ const ConsultaPage: React.FC = () => {
           </div>
 
           {/* Themed History Section */}
-          <div className="mt-6 pt-6 border-t border-border-light dark:border-border-dark">
-            <h3 className="text-lg font-medium text-text-primary-light dark:text-text-primary-dark mb-3">Histórico de Consultas (Simulado)</h3>
-            <div className="bg-muted-light dark:bg-muted-dark rounded-md p-4 border border-border-light dark:border-border-dark">
+          <div className="mt-8 pt-6 border-t border-border-light dark:border-border-dark"> {/* Increased margin */}
+            <h3 className="text-lg font-medium text-text-primary-light dark:text-text-primary-dark mb-4">Histórico de Consultas (Simulado)</h3> {/* Increased margin */}
+            <div className="bg-muted-light dark:bg-muted-dark rounded-lg p-4 border border-border-light dark:border-border-dark space-y-2"> {/* Rounded-lg, space-y */}
               <div className="flex justify-between items-center text-sm">
                 <span className="text-text-secondary-light dark:text-text-secondary-dark">Última consulta:</span>
                 <span className="font-medium text-text-primary-light dark:text-text-primary-dark">{new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
-              <div className="flex justify-between items-center text-sm mt-2">
+              <div className="flex justify-between items-center text-sm">
                 <span className="text-text-secondary-light dark:text-text-secondary-dark">Consultas nos últimos 30 dias:</span>
                 <span className="font-medium text-text-primary-light dark:text-text-primary-dark">3</span>
               </div>

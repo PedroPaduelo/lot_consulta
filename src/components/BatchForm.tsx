@@ -86,8 +86,8 @@ const BatchForm: React.FC<BatchFormProps> = ({
 
   return (
     // Themed form container
-    <div className="bg-surface-light dark:bg-surface-dark rounded-lg shadow-md p-6 border border-border-light dark:border-border-dark">
-      <h2 className="text-xl font-semibold text-text-primary-light dark:text-text-primary-dark mb-4">Salvar Lote para Processamento</h2>
+    <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-6 border border-border-light dark:border-border-dark"> {/* Increased rounding, shadow */}
+      <h2 className="text-xl font-semibold text-text-primary-light dark:text-text-primary-dark mb-6">Salvar Lote para Processamento</h2> {/* Increased margin */}
 
       {disabled && (
          <Alert type="warning" message={
@@ -98,11 +98,11 @@ const BatchForm: React.FC<BatchFormProps> = ({
          } />
       )}
 
-      <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+      <form onSubmit={handleSubmit} className="space-y-6"> {/* Added space-y */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6"> {/* Increased gap */}
           {/* Themed Input Field */}
           <div>
-            <label htmlFor="batch-name" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+            <label htmlFor="batch-name" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5"> {/* Increased margin */}
               Nome do Lote *
             </label>
             <input
@@ -110,7 +110,7 @@ const BatchForm: React.FC<BatchFormProps> = ({
               id="batch-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full px-4 py-2 border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark bg-surface-light dark:bg-surface-dark text-text-primary-light dark:text-text-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+              className="form-input w-full px-4 py-2 border-border-light dark:border-border-dark rounded-lg focus:border-primary-light focus:ring-primary-light dark:focus:border-primary-dark dark:focus:ring-primary-dark bg-surface-light dark:bg-surface-dark text-text-primary-light dark:text-text-primary-dark disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ease-in-out" // Use form-input, rounded-lg
               placeholder="Ex: Validação Clientes - Junho 2024"
               required
               disabled={disabled || isLoading}
@@ -119,14 +119,14 @@ const BatchForm: React.FC<BatchFormProps> = ({
 
           {/* Themed Select Field */}
           <div>
-            <label htmlFor="bank-api" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1">
+            <label htmlFor="bank-api" className="block text-sm font-medium text-text-primary-light dark:text-text-primary-dark mb-1.5"> {/* Increased margin */}
               API do Banco *
             </label>
             <select
               id="bank-api"
               value={bankApi}
               onChange={(e) => setBankApi(e.target.value)}
-              className="w-full px-4 py-2 border border-border-light dark:border-border-dark rounded-md focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark bg-surface-light dark:bg-surface-dark text-text-primary-light dark:text-text-primary-dark disabled:opacity-50 disabled:cursor-not-allowed"
+              className="form-select w-full px-4 py-2 border-border-light dark:border-border-dark rounded-lg focus:border-primary-light focus:ring-primary-light dark:focus:border-primary-dark dark:focus:ring-primary-dark bg-surface-light dark:bg-surface-dark text-text-primary-light dark:text-text-primary-dark disabled:opacity-50 disabled:cursor-not-allowed transition duration-150 ease-in-out" // Use form-select, rounded-lg
               required
               disabled={disabled || isLoading}
             >
@@ -141,28 +141,32 @@ const BatchForm: React.FC<BatchFormProps> = ({
         </div>
 
         {/* Themed Info Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <div className="bg-muted-light dark:bg-muted-dark p-3 rounded-md border border-border-light dark:border-border-dark">
-            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Arquivo</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-muted-light dark:bg-muted-dark p-4 rounded-lg border border-border-light dark:border-border-dark"> {/* Increased padding, rounded-lg */}
+            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mb-1">Arquivo</p>
             <p className="font-medium text-text-primary-light dark:text-text-primary-dark truncate" title={filename || 'arquivo.xlsx'}>{filename || 'arquivo.xlsx'}</p>
           </div>
 
-          <div className="bg-muted-light dark:bg-muted-dark p-3 rounded-md border border-border-light dark:border-border-dark">
-            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Total de CPFs</p>
+          <div className="bg-muted-light dark:bg-muted-dark p-4 rounded-lg border border-border-light dark:border-border-dark"> {/* Increased padding, rounded-lg */}
+            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mb-1">Total de CPFs</p>
             <p className="font-medium text-text-primary-light dark:text-text-primary-dark">{cpfData.length}</p>
           </div>
 
-          <div className="bg-muted-light dark:bg-muted-dark p-3 rounded-md border border-border-light dark:border-border-dark">
-            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">Status Inicial</p>
+          <div className="bg-muted-light dark:bg-muted-dark p-4 rounded-lg border border-border-light dark:border-border-dark"> {/* Increased padding, rounded-lg */}
+            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark mb-1">Status Inicial</p>
             <p className="font-medium text-yellow-600 dark:text-yellow-400">Pendente</p>
           </div>
         </div>
 
+        {/* Use themed Alert component */}
+        {error && <Alert type="error" message={error} />}
+        {success && <Alert type="success" message={success} />}
+
         {/* Themed Save Button */}
-        <div className="flex justify-end">
+        <div className="flex justify-end pt-2"> {/* Added padding-top */}
           <button
             type="submit"
-            className="px-6 py-2 bg-primary-light dark:bg-primary-dark text-white rounded-md hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 dark:focus:ring-offset-background-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center transition-colors"
+            className="px-6 py-2.5 bg-primary-light dark:bg-primary-dark text-white rounded-lg font-semibold hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 dark:focus:ring-offset-background-dark disabled:opacity-60 disabled:cursor-not-allowed flex items-center transition-all duration-200 ease-in-out shadow-sm hover:shadow-md" // Adjusted padding, rounded-lg, shadow
             disabled={isLoading || !name.trim() || !bankApi || disabled}
           >
             {isLoading ? (
@@ -178,10 +182,6 @@ const BatchForm: React.FC<BatchFormProps> = ({
             )}
           </button>
         </div>
-
-        {/* Use themed Alert component */}
-        {error && <Alert type="error" message={error} />}
-        {success && <Alert type="success" message={success} />}
       </form>
     </div>
   );

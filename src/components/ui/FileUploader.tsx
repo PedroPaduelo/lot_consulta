@@ -35,13 +35,18 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(false);
+    // Check if the leave target is outside the dropzone
+    if (e.relatedTarget && !(e.currentTarget as Node).contains(e.relatedTarget as Node)) {
+        setIsDragging(false);
+    } else if (!e.relatedTarget) { // Handle leaving the browser window
+        setIsDragging(false);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    // Style indication for drag over can be added here if needed
+    setIsDragging(true); // Ensure dragging state stays true while over
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -50,27 +55,30 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     setIsDragging(false);
 
     const file = e.dataTransfer.files?.[0];
-    if (file) {
+    if (file && (!accept || accept.split(',').some(type => file.name.endsWith(type.trim())))) { // Basic accept check on drop
       onFileSelect(file);
+    } else if (file) {
+        // Optionally show an error if the dropped file type is wrong
+        console.warn("Dropped file type not accepted:", file.type);
     }
   };
 
   return (
     // Themed dropzone area
     <div
-      className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors duration-200 ${
+      className={`border-2 border-dashed rounded-xl p-8 text-center transition-all duration-300 ease-in-out ${ // Increased rounding
         isDragging
-          ? 'border-primary-light dark:border-primary-dark bg-blue-50 dark:bg-blue-900/30' // Highlight on drag
-          : 'border-border-light dark:border-border-dark hover:border-gray-400 dark:hover:border-gray-500'
+          ? 'border-primary-light dark:border-primary-dark bg-primary-light/10 dark:bg-primary-dark/20 scale-105 shadow-lg' // Enhanced highlight on drag
+          : 'border-border-light dark:border-border-dark hover:border-primary-light/50 dark:hover:border-primary-dark/50 hover:bg-muted-light/50 dark:hover:bg-muted-dark/30' // Subtle hover
       }`}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <FileSpreadsheet className="h-12 w-12 mx-auto text-text-secondary-light dark:text-text-secondary-dark mb-4" />
-      <p className="text-text-secondary-light dark:text-text-secondary-dark mb-4">
-        Arraste e solte seu arquivo Excel aqui ou clique para selecionar
+      <FileSpreadsheet className={`h-12 w-12 mx-auto mb-4 transition-colors duration-300 ${isDragging ? 'text-primary-light dark:text-primary-dark' : 'text-text-secondary-light dark:text-text-secondary-dark'}`} />
+      <p className={`mb-4 transition-colors duration-300 ${isDragging ? 'text-primary-light dark:text-primary-dark font-medium' : 'text-text-secondary-light dark:text-text-secondary-dark'}`}>
+        {isDragging ? 'Solte o arquivo aqui!' : 'Arraste e solte seu arquivo Excel aqui ou clique para selecionar'}
       </p>
       <input
         type="file"
@@ -83,12 +91,12 @@ const FileUploader: React.FC<FileUploaderProps> = ({
       {/* Themed button */}
       <label
         htmlFor={id}
-        className="inline-flex items-center px-4 py-2 bg-primary-light dark:bg-primary-dark text-white rounded-md hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark cursor-pointer transition-colors focus-within:ring-2 focus-within:ring-primary-light dark:focus-within:ring-primary-dark focus-within:ring-offset-2 dark:focus-within:ring-offset-background-dark"
+        className="inline-flex items-center px-5 py-2.5 bg-primary-light dark:bg-primary-dark text-white rounded-lg text-sm font-medium hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark cursor-pointer transition-all duration-200 ease-in-out focus-within:ring-2 focus-within:ring-primary-light dark:focus-within:ring-primary-dark focus-within:ring-offset-2 dark:focus-within:ring-offset-background-dark shadow-sm hover:shadow-md" // Adjusted padding, added shadow
       >
         <Upload className="h-5 w-5 mr-2" />
         Selecionar Arquivo
       </label>
-      <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-2">Aceita .xlsx e .xls</p>
+      <p className="text-xs text-text-secondary-light dark:text-text-secondary-dark mt-3">Aceita .xlsx e .xls</p>
     </div>
   );
 };
