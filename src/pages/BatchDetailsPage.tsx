@@ -243,37 +243,67 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
         return;
       }
 
-      // 2. Prepare data for the sheet
-      const dataToExport = finalizedRecords.map(record => ({
-        'CPF': formatCPF(record.cpf), // Format CPF for display
-        'Nome': record.nome,
-        'Telefone': record.telefone || '-',
-        'Status Processamento': record.status,
-        'Resultado Consulta': record.result ? JSON.stringify(record.result) : '', // Stringify JSON result
-        'Data Criação': formatDate(record.created_at),
-        'Data Atualização': formatDate(record.updated_at),
-        'Validação Inicial': record.isValid ? 'Válido' : 'Inválido',
-      }));
+      // 2. Prepare data for the sheet, extracting specific fields from result JSON
+      const dataToExport = finalizedRecords.map(record => {
+        let banco = '-';
+        let valorLiquido = '-';
+
+        // Safely parse result JSON and extract fields
+        if (record.result && typeof record.result === 'object') {
+          try {
+            // Access properties directly if result is already an object
+            banco = record.result.banco || '-';
+            valorLiquido = record.result.valor_liquido || '-';
+          } catch (parseError) {
+            console.error(`Error parsing result JSON for CPF ${record.cpf}:`, parseError);
+            // Keep default values if parsing fails
+          }
+        } else if (typeof record.result === 'string') {
+            // Attempt to parse if it's a string
+            try {
+                const parsedResult = JSON.parse(record.result);
+                banco = parsedResult.banco || '-';
+                valorLiquido = parsedResult.valor_liquido || '-';
+            } catch (parseError) {
+                console.error(`Error parsing result string for CPF ${record.cpf}:`, parseError);
+            }
+        }
+
+
+        return {
+          'CPF': formatCPF(record.cpf), // Format CPF for display
+          'Nome': record.nome,
+          'Telefone': record.telefone || '-',
+          'Banco': banco, // Extracted field
+          'Valor Líquido': valorLiquido, // Extracted field
+          // Optional: Keep other fields if needed
+          // 'Status Processamento': record.status,
+          // 'Data Criação': formatDate(record.created_at),
+          // 'Data Atualização': formatDate(record.updated_at),
+          // 'Validação Inicial': record.isValid ? 'Válido' : 'Inválido',
+        };
+      });
 
       // 3. Create worksheet and workbook
       const worksheet = XLSX.utils.json_to_sheet(dataToExport);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, 'Finalizados');
 
-      // Set column widths (optional, improves readability)
+      // Set column widths (optional, adjust as needed)
       worksheet['!cols'] = [
         { wch: 18 }, // CPF
         { wch: 30 }, // Nome
         { wch: 15 }, // Telefone
-        { wch: 20 }, // Status Processamento
-        { wch: 50 }, // Resultado Consulta
-        { wch: 20 }, // Data Criação
-        { wch: 20 }, // Data Atualização
-        { wch: 15 }, // Validação Inicial
+        { wch: 20 }, // Banco
+        { wch: 15 }, // Valor Líquido
+        // { wch: 20 }, // Status Processamento (if kept)
+        // { wch: 20 }, // Data Criação (if kept)
+        // { wch: 20 }, // Data Atualização (if kept)
+        // { wch: 15 }, // Validação Inicial (if kept)
       ];
 
       // 4. Generate and trigger download
-      const filename = `lote_${batch?.name || batchId.substring(0,8)}_finalizados.xlsx`;
+      const filename = `lote_${batch?.name || batchId.substring(0,8)}_finalizados_detalhado.xlsx`; // Updated filename
       XLSX.writeFile(workbook, filename);
 
     } catch (err: any) {
