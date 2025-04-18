@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'; // Import useRef
 import { supabase, Batch, CPFRecord as DbCPFRecord } from '../utils/supabase';
-import { ArrowLeft, FileText, Database, Calendar, CheckSquare, XSquare, Hash, User, Phone, ListFilter, Eye, Percent } from 'lucide-react'; // Added Eye, Percent
+import { ArrowLeft, FileText, Database, Calendar, CheckSquare, XSquare, Hash, ListFilter, Eye, Percent, Download } from 'lucide-react'; // Added Download icon
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import Spinner from '../components/ui/Spinner';
@@ -10,6 +10,7 @@ import StatusProcessingBadge from '../components/ui/StatusProcessingBadge'; // F
 import CPFResultModal from '../components/CPFResultModal'; // Import the modal
 import { usePagination } from '../hooks/usePagination';
 import { formatCPF } from '../utils/validators'; // Import formatCPF
+import * as XLSX from 'xlsx'; // Import xlsx library
 
 // Extend the interface for display purposes
 export interface DisplayCPFRecord extends DbCPFRecord { // Export if needed elsewhere
@@ -31,6 +32,8 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
   const [filter, setFilter] = useState<'all' | 'valid' | 'invalid'>('all');
   const [isResultModalOpen, setIsResultModalOpen] = useState(false);
   const [selectedCpfRecord, setSelectedCpfRecord] = useState<DisplayCPFRecord | null>(null);
+  const [isExporting, setIsExporting] = useState(false); // State for export loading
+  const [exportError, setExportError] = useState<string | null>(null); // State for export error
 
   // State for progress
   const [pendingCount, setPendingCount] = useState<number | null>(null);
@@ -165,6 +168,7 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
     setCpfRecords([]);
     setPendingCount(null); // Reset pending count on new fetch
     setProgressPercent(0); // Reset progress
+    setExportError(null); // Clear export error on refresh
 
     try {
       // Fetch Batch Info
@@ -224,6 +228,63 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
     setIsResultModalOpen(true);
   };
 
+  // --- START EXPORT FUNCTION ---
+  const handleExportExcel = () => {
+    setIsExporting(true);
+    setExportError(null);
+
+    try {
+      // 1. Filter for finalized records
+      const finalizedRecords = cpfRecords.filter(record => record.status === 'Finalizado');
+
+      if (finalizedRecords.length === 0) {
+        setExportError("Nenhum registro com status 'Finalizado' para exportar.");
+        setIsExporting(false);
+        return;
+      }
+
+      // 2. Prepare data for the sheet
+      const dataToExport = finalizedRecords.map(record => ({
+        'CPF': formatCPF(record.cpf), // Format CPF for display
+        'Nome': record.nome,
+        'Telefone': record.telefone || '-',
+        'Status Processamento': record.status,
+        'Resultado Consulta': record.result ? JSON.stringify(record.result) : '', // Stringify JSON result
+        'Data Criação': formatDate(record.created_at),
+        'Data Atualização': formatDate(record.updated_at),
+        'Validação Inicial': record.isValid ? 'Válido' : 'Inválido',
+      }));
+
+      // 3. Create worksheet and workbook
+      const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Finalizados');
+
+      // Set column widths (optional, improves readability)
+      worksheet['!cols'] = [
+        { wch: 18 }, // CPF
+        { wch: 30 }, // Nome
+        { wch: 15 }, // Telefone
+        { wch: 20 }, // Status Processamento
+        { wch: 50 }, // Resultado Consulta
+        { wch: 20 }, // Data Criação
+        { wch: 20 }, // Data Atualização
+        { wch: 15 }, // Validação Inicial
+      ];
+
+      // 4. Generate and trigger download
+      const filename = `lote_${batch?.name || batchId.substring(0,8)}_finalizados.xlsx`;
+      XLSX.writeFile(workbook, filename);
+
+    } catch (err: any) {
+      console.error("Error exporting to Excel:", err);
+      setExportError(`Erro ao gerar o arquivo Excel: ${err.message || 'Erro desconhecido'}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+  // --- END EXPORT FUNCTION ---
+
   // Helper to render detail items
   const DetailItem: React.FC<{ icon: React.ElementType, label: string, value: React.ReactNode }> = ({ icon: Icon, label, value }) => (
     <div className="flex items-start space-x-3">
@@ -234,6 +295,10 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
       </div>
     </div>
   );
+
+  // Determine if export should be disabled
+  const finalizedCount = cpfRecords.filter(r => r.status === 'Finalizado').length;
+  const canExport = finalizedCount > 0 && !isExporting;
 
   if (isLoading) {
     return (
@@ -250,19 +315,43 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
 
   return (
     <div className="space-y-6">
-       {/* Back Button and Title */}
-       <div className="flex items-center mb-4">
+       {/* Back Button, Title, and Export Button */}
+       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
+         <div className="flex items-center">
+             <button
+               onClick={onBack}
+               className="p-2 rounded-md hover:bg-muted-light dark:hover:bg-muted-dark text-text-secondary-light dark:text-text-secondary-dark mr-3"
+               title="Voltar para a lista de lotes"
+             >
+               <ArrowLeft className="h-5 w-5" />
+             </button>
+             <h1 className="text-2xl font-semibold text-text-primary-light dark:text-text-primary-dark">
+               Detalhes do Lote
+             </h1>
+         </div>
+         {/* Export Button */}
          <button
-           onClick={onBack}
-           className="p-2 rounded-md hover:bg-muted-light dark:hover:bg-muted-dark text-text-secondary-light dark:text-text-secondary-dark mr-3"
-           title="Voltar para a lista de lotes"
-         >
-           <ArrowLeft className="h-5 w-5" />
-         </button>
-         <h1 className="text-2xl font-semibold text-text-primary-light dark:text-text-primary-dark">
-           Detalhes do Lote
-         </h1>
+            onClick={handleExportExcel}
+            disabled={!canExport}
+            className="px-4 py-2 bg-green-600 dark:bg-green-700 text-white rounded-md hover:bg-green-700 dark:hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-green-600 focus:ring-offset-2 dark:focus:ring-offset-background-dark flex items-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+            title={!canExport && finalizedCount === 0 ? "Nenhum registro finalizado para exportar" : "Exportar registros finalizados para Excel"}
+          >
+            {isExporting ? (
+              <>
+                <Spinner size="sm" color="white" className="mr-2" />
+                Exportando...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                Exportar Finalizados (Excel)
+              </>
+            )}
+          </button>
        </div>
+       {/* Export Error Alert */}
+       {exportError && <Alert type="error" message={exportError} />}
+
 
       {/* Batch Details Card */}
       {batch && (
