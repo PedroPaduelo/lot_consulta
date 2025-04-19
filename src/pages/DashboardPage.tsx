@@ -3,9 +3,14 @@ import { supabase, Batch } from '../utils/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import Spinner from '../components/ui/Spinner';
 import Alert from '../components/ui/Alert';
-import { ListChecks, Users, Hash, Clock, RefreshCw, CheckCircle, AlertCircle, BarChart2, Pause } from 'lucide-react'; // Added Pause icon
+import { ListChecks, Users, Hash, Clock, RefreshCw, CheckCircle, AlertCircle, BarChart2, Pause, Activity, Calendar } from 'lucide-react';
+import DailyUpdatesChart, { DailyUpdateData } from '../components/charts/DailyUpdatesChart';
+import HourlyUpdatesChart, { HourlyUpdateData } from '../components/charts/HourlyUpdatesChart';
+import { DateRangePicker } from '../components/ui/DateRangePicker'; // Import DateRangePicker
+import { DateRange } from 'react-day-picker';
+import { subDays, startOfDay, endOfDay } from 'date-fns'; // Import date-fns functions
 
-// Type returned by the RPC function
+// Type returned by the RPC function for batches
 type BatchWithCounts = Omit<Batch, 'progress_percent'> & {
     processed_count: number;
     pending_count: number;
@@ -18,13 +23,11 @@ interface ProfileCount {
 }
 
 // Define the standard batch statuses used throughout the application
-// IMPORTANT: Keep this consistent with database values and other components (e.g., StatusProcessingBadge)
-// FIX: Changed PAUSADO value from "Pausado" to "Pause" to match database/RPC output based on logs.
 const BATCH_STATUSES = {
     PENDENTE: 'Pendente',
     EM_EXECUCAO: 'Em execução',
     FINALIZADO: 'Finalizado',
-    PAUSADO: 'Pause', // <--- FIX: Changed from "Pausado"
+    PAUSADO: 'Pause', // Matches DB/RPC value
     ERRO: 'Erro',
 } as const;
 
@@ -35,143 +38,164 @@ interface KpiData {
     totalBatches: number;
     totalCpfs: number;
     statusCounts: {
-        [key in BatchStatusValue]: number; // Use mapped type for status counts
+        [key in BatchStatusValue]: number;
     };
-    userCounts?: { // Optional: only for admins
+    userCounts?: {
         total: number;
         admin: number;
         operator: number;
     };
 }
 
+// Helper to get YYYY-MM-DD string in UTC
+const getUTCDateString = (date: Date): string => {
+    return date.toISOString().split('T')[0];
+};
+
+// Helper to get ISO string (UTC) for start/end of day
+const getUTCISOString = (date: Date | undefined, type: 'start' | 'end'): string | undefined => {
+    if (!date) return undefined;
+    const d = type === 'start' ? startOfDay(date) : endOfDay(date);
+    return d.toISOString();
+}
+
 const DashboardPage: React.FC = () => {
     const [kpiData, setKpiData] = useState<KpiData | null>(null);
+    const [dailyChartData, setDailyChartData] = useState<DailyUpdateData[]>([]);
+    const [hourlyChartData, setHourlyChartData] = useState<HourlyUpdateData[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isLoadingCharts, setIsLoadingCharts] = useState(false); // Separate loading for charts
     const [error, setError] = useState<string | null>(null);
-    const { isAdmin, profile } = useAuth(); // Get admin status and profile
+    const [chartError, setChartError] = useState<string | null>(null);
+    const { isAdmin, profile } = useAuth();
 
+    // State for date range filter
+    const [dateRange, setDateRange] = useState<DateRange | undefined>(() => {
+        const endDate = new Date();
+        const startDate = subDays(endDate, 29); // Default to last 30 days (inclusive)
+        return { from: startDate, to: endDate };
+    });
+
+    // Get today's date string (UTC) for the hourly chart (remains fixed to today)
+    const todayUTCString = getUTCDateString(new Date());
+
+    // Fetch initial KPIs and chart data on mount or profile change
     useEffect(() => {
-        fetchDashboardData();
-    }, [isAdmin, profile]); // Refetch if admin status or profile changes
+        fetchKpiData(); // Fetch KPIs once
+        fetchChartData(); // Fetch initial chart data
+    }, [isAdmin, profile]);
 
-    const fetchDashboardData = async () => {
+    // Refetch chart data when date range changes
+    useEffect(() => {
+        fetchChartData();
+    }, [dateRange, profile]); // Depend on dateRange and profile
+
+    // Fetch only KPI data (Batches, Users)
+    const fetchKpiData = async () => {
         if (!profile) {
             setError("Perfil do usuário não carregado.");
             setIsLoading(false);
             return;
         }
-
-        setIsLoading(true);
+        setIsLoading(true); // Loading for KPIs
         setError(null);
 
         try {
-            // Fetch Batches using RPC
+            // --- Fetch Batch KPIs and User Counts ---
             console.log('[DEBUG] Dashboard: Calling RPC get_batches_with_progress...');
             const { data: rpcData, error: rpcError } = await supabase.rpc('get_batches_with_progress', {
                 is_admin_param: isAdmin,
                 user_id_param: profile.id
             });
-
-            if (rpcError) {
-                console.error('[ERROR] Dashboard RPC error:', rpcError);
-                throw new Error(rpcError.message || 'Erro ao buscar dados dos lotes.');
-            }
-            // --- DEBUG: Log the raw RPC data ---
-            console.log('[DEBUG] Dashboard RAW RPC response:', JSON.stringify(rpcData, null, 2));
-            // --- END DEBUG ---
-
+            if (rpcError) throw new Error(rpcError.message || 'Erro ao buscar dados dos lotes.');
             const batches: BatchWithCounts[] = rpcData || [];
-
-            // Calculate Batch KPIs
             const totalBatches = batches.length;
             const totalCpfs = batches.reduce((sum, batch) => sum + (batch.total_cpfs || 0), 0);
-
-            // Initialize status counts using the defined constants
             const statusCounts: KpiData['statusCounts'] = {
-                [BATCH_STATUSES.PENDENTE]: 0,
-                [BATCH_STATUSES.EM_EXECUCAO]: 0,
-                [BATCH_STATUSES.FINALIZADO]: 0,
-                [BATCH_STATUSES.PAUSADO]: 0, // Now expects "Pause"
-                [BATCH_STATUSES.ERRO]: 0,
+                [BATCH_STATUSES.PENDENTE]: 0, [BATCH_STATUSES.EM_EXECUCAO]: 0, [BATCH_STATUSES.FINALIZADO]: 0, [BATCH_STATUSES.PAUSADO]: 0, [BATCH_STATUSES.ERRO]: 0,
             };
-
-            // --- DEBUG: Log expected status values ---
-            console.log('[DEBUG] Dashboard: Expected status values:', Object.values(BATCH_STATUSES));
-            // --- END DEBUG ---
-
-            // Aggregate counts, ensuring keys match exactly using explicit comparison
-            batches.forEach((batch, index) => {
-                const statusFromBatch = batch.status; // Get the status string directly
-                console.log(`[DEBUG] Dashboard Batch[${index}] ID: ${batch.id}, Raw Status from DB/RPC: "${statusFromBatch}" (Type: ${typeof statusFromBatch})`);
-
-                let matched = false;
-                // Iterate through the defined status *values* for comparison
-                for (const key in BATCH_STATUSES) {
-                    const expectedStatusValue = BATCH_STATUSES[key as BatchStatusKey];
-                    // Explicit comparison
-                    if (statusFromBatch === expectedStatusValue) {
-                        statusCounts[expectedStatusValue]++; // Increment count using the matched value as key
-                        console.log(`   ✅ Counted valid status: "${statusFromBatch}" matched expected "${expectedStatusValue}"`);
-                        matched = true;
-                        break; // Found a match, exit inner loop
-                    }
-                }
-
-                if (!matched) {
-                    // Log unexpected statuses clearly
-                    console.warn(`   ⚠️ Dashboard: Encountered unexpected or non-matching batch status: "${statusFromBatch}" for batch ID: ${batch.id}. This status was NOT counted.`);
-                }
+            batches.forEach(batch => {
+                const statusValue = Object.values(BATCH_STATUSES).find(val => val === batch.status);
+                if (statusValue) statusCounts[statusValue]++;
+                else console.warn(`[WARN] Dashboard: Unexpected batch status "${batch.status}" for batch ID: ${batch.id}`);
             });
-            // --- DEBUG: Log final counts before setting state ---
-            console.log('[DEBUG] Dashboard final calculated status counts (before setState):', JSON.stringify(statusCounts, null, 2));
-            // --- END DEBUG ---
 
             let userCounts: KpiData['userCounts'] | undefined = undefined;
-
-            // Fetch User Counts (only if admin)
             if (isAdmin) {
-                console.log('[DEBUG] Dashboard: Fetching profiles for user counts...');
-                const { data: profilesData, error: profilesError } = await supabase
-                    .from('profiles')
-                    .select('id, role'); // Select only needed fields
-
-                if (profilesError) {
-                    console.error('[ERROR] Dashboard profiles fetch error:', profilesError);
-                    // Don't block dashboard for profile errors, just log and continue
-                    setError('Erro ao buscar contagem de usuários, mas exibindo dados dos lotes.');
-                } else {
+                const { data: profilesData, error: profilesError } = await supabase.from('profiles').select('id, role');
+                if (profilesError) setError('Erro ao buscar contagem de usuários, mas exibindo dados dos lotes.');
+                else {
                     const profiles: ProfileCount[] = profilesData || [];
                     userCounts = {
                         total: profiles.length,
                         admin: profiles.filter(p => p.role === 'admin').length,
-                        operator: profiles.filter(p => p.role === 'operator' || !p.role).length, // Count null/undefined as operator
+                        operator: profiles.filter(p => p.role === 'operator' || !p.role).length,
                     };
-                    console.log('[DEBUG] Dashboard user counts:', userCounts);
                 }
             }
-
-            // Construct the final data object
-            const finalKpiData: KpiData = {
-                totalBatches,
-                totalCpfs,
-                statusCounts, // Use the calculated counts
-                userCounts,
-            };
-
-            // --- DEBUG: Log the object being passed to setKpiData ---
-            console.log('[DEBUG] Dashboard: Data being set to state:', JSON.stringify(finalKpiData, null, 2));
-            // --- END DEBUG ---
-
-            setKpiData(finalKpiData); // Update the state
-
+            setKpiData({ totalBatches, totalCpfs, statusCounts, userCounts });
+            // --- End of Batch KPI logic ---
         } catch (err: any) {
-            console.error("[ERROR] Dashboard fetch error:", err);
-            setError(err.message || 'Falha ao carregar dados do dashboard.');
-            setKpiData(null); // Clear data on error
+            console.error("[ERROR] Dashboard KPI fetch error:", err);
+            setError(err.message || 'Falha ao carregar dados de KPI.');
+            setKpiData(null);
         } finally {
-            setIsLoading(false);
+            setIsLoading(false); // Finish KPI loading
         }
     };
+
+    // Fetch only Chart data based on current dateRange
+    const fetchChartData = async () => {
+        if (!profile) {
+            // Don't set global error, just prevent fetch
+            console.warn("[WARN] Chart fetch skipped: Profile not loaded.");
+            return;
+        }
+        if (!dateRange?.from || !dateRange?.to) {
+            console.warn("[WARN] Chart fetch skipped: Date range not fully selected.");
+            setChartError("Selecione um período de datas válido.");
+            setDailyChartData([]); // Clear data if range is invalid
+            // Keep hourly chart as is (shows today)
+            return;
+        }
+
+        setIsLoadingCharts(true); // Start chart loading
+        setChartError(null);
+
+        try {
+            // Daily Chart Data (Using selected date range)
+            const startDateISO = getUTCISOString(dateRange.from, 'start');
+            const endDateISO = getUTCISOString(dateRange.to, 'end');
+
+            console.log(`[DEBUG] Dashboard: Calling RPC get_cpf_updates_by_day (Start: ${startDateISO}, End: ${endDateISO})`);
+            const { data: dailyData, error: dailyError } = await supabase.rpc('get_cpf_updates_by_day', {
+                start_date: startDateISO,
+                end_date: endDateISO // Use end of day for range inclusion
+            });
+            if (dailyError) throw new Error(`Erro ao buscar dados diários: ${dailyError.message}`);
+            console.log('[DEBUG] Dashboard: Daily chart data received:', dailyData);
+            setDailyChartData((dailyData as DailyUpdateData[]) || []);
+
+            // Hourly Chart Data (Remains fixed to Today - Fetch only once or if needed)
+            // Optimization: Could fetch hourly data less frequently if desired
+            console.log(`[DEBUG] Dashboard: Calling RPC get_cpf_updates_by_hour (Target: ${todayUTCString})`);
+            const { data: hourlyData, error: hourlyError } = await supabase.rpc('get_cpf_updates_by_hour', {
+                target_date: todayUTCString
+            });
+            if (hourlyError) throw new Error(`Erro ao buscar dados por hora: ${hourlyError.message}`);
+            console.log('[DEBUG] Dashboard: Hourly chart data received:', hourlyData);
+            setHourlyChartData((hourlyData as HourlyUpdateData[]) || []);
+
+        } catch (chartErr: any) {
+            console.error("[ERROR] Dashboard chart fetch error:", chartErr);
+            setChartError(chartErr.message || 'Falha ao carregar dados dos gráficos.');
+            setDailyChartData([]); // Clear data on error
+            setHourlyChartData([]);
+        } finally {
+            setIsLoadingCharts(false); // Finish chart loading
+        }
+    };
+
 
     // Helper component for KPI cards
     const KpiCard: React.FC<{ title: string; value: string | number; icon: React.ElementType; colorClass: string }> =
@@ -187,11 +211,25 @@ const DashboardPage: React.FC = () => {
         </div>
     );
 
-    // --- DEBUG: Log kpiData when rendering ---
-    console.log('[DEBUG] Dashboard rendering with kpiData:', kpiData ? JSON.stringify(kpiData.statusCounts, null, 2) : 'null');
-    // --- END DEBUG ---
+    // Helper component for Chart cards
+    const ChartCard: React.FC<{ title: string; description: string; icon: React.ElementType; children: React.ReactNode }> =
+        ({ title, description, icon: Icon, children }) => (
+        <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark border border-border-light dark:border-border-dark">
+            <div className="flex items-center p-4 sm:p-6 border-b border-border-light dark:border-border-dark">
+                <Icon className="h-6 w-6 text-primary-light dark:text-primary-dark mr-3" />
+                <div>
+                    <h2 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark">{title}</h2>
+                    <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">{description}</p>
+                </div>
+            </div>
+            <div className="p-4 sm:p-6 min-h-[350px] flex items-center justify-center"> {/* Ensure min height for loading state */}
+                {children}
+            </div>
+        </div>
+    );
 
-    if (isLoading) {
+
+    if (isLoading && !kpiData) { // Show initial loading only for KPIs
         return (
             <div className="flex justify-center items-center h-64">
                 <Spinner size="lg" />
@@ -200,42 +238,50 @@ const DashboardPage: React.FC = () => {
         );
     }
 
-    if (error && !kpiData) { // Show error only if there's no data at all
+    if (error && !kpiData) { // Show main error only if there's no KPI data at all
         return <Alert type="error" message={error} />;
     }
 
     return (
         <div className="space-y-8">
-            <div className="flex items-center mb-6">
-                 <BarChart2 className="mr-3 h-7 w-7 text-primary-light dark:text-primary-dark" />
-                 <h1 className="text-2xl font-semibold text-text-primary-light dark:text-text-primary-dark">
-                   Dashboard
-                 </h1>
+            {/* Header and Date Filter */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                <div className="flex items-center">
+                    <BarChart2 className="mr-3 h-7 w-7 text-primary-light dark:text-primary-dark" />
+                    <h1 className="text-2xl font-semibold text-text-primary-light dark:text-text-primary-dark">
+                        Dashboard
+                    </h1>
+                </div>
+                <DateRangePicker
+                    initialRange={dateRange}
+                    onRangeChange={setDateRange}
+                />
             </div>
 
-            {error && <Alert type="warning" message={error} />} {/* Show profile fetch error as warning if batch data loaded */}
 
+            {/* Show non-blocking errors */}
+            {error && kpiData && <Alert type="warning" message={error} />}
+            {chartError && <Alert type="warning" message={chartError} />}
+
+            {/* KPIs Section */}
             {kpiData ? (
                 <>
                     {/* General KPIs */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                         <KpiCard title="Total de Lotes" value={kpiData.totalBatches} icon={ListChecks} colorClass="text-blue-500 dark:text-blue-400" />
                         <KpiCard title="Total de CPFs Registrados" value={kpiData.totalCpfs} icon={Hash} colorClass="text-indigo-500 dark:text-indigo-400" />
-                        {/* Placeholder or another general KPI */}
-                         <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-5 border border-border-light dark:border-border-dark opacity-50">
+                        <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-5 border border-border-light dark:border-border-dark opacity-50 flex items-center justify-center">
                             <p className="text-center text-text-secondary-light dark:text-text-secondary-dark">...</p>
                          </div>
                     </div>
 
-                    {/* Batch Status KPIs - Using BATCH_STATUSES constants */}
+                    {/* Batch Status KPIs */}
                     <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-6 border border-border-light dark:border-border-dark">
                         <h2 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark mb-4">Status dos Lotes</h2>
                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                            {/* Access counts using the constant values as keys */}
                             <KpiCard title={BATCH_STATUSES.PENDENTE} value={kpiData.statusCounts[BATCH_STATUSES.PENDENTE]} icon={Clock} colorClass="text-yellow-500 dark:text-yellow-400" />
                             <KpiCard title={BATCH_STATUSES.EM_EXECUCAO} value={kpiData.statusCounts[BATCH_STATUSES.EM_EXECUCAO]} icon={RefreshCw} colorClass="text-blue-500 dark:text-blue-400" />
                             <KpiCard title={BATCH_STATUSES.FINALIZADO} value={kpiData.statusCounts[BATCH_STATUSES.FINALIZADO]} icon={CheckCircle} colorClass="text-green-500 dark:text-green-400" />
-                            {/* Use the updated constant value for the title and key */}
                             <KpiCard title={BATCH_STATUSES.PAUSADO} value={kpiData.statusCounts[BATCH_STATUSES.PAUSADO]} icon={Pause} colorClass="text-gray-500 dark:text-gray-400" />
                             <KpiCard title={BATCH_STATUSES.ERRO} value={kpiData.statusCounts[BATCH_STATUSES.ERRO]} icon={AlertCircle} colorClass="text-red-500 dark:text-red-400" />
                         </div>
@@ -252,16 +298,33 @@ const DashboardPage: React.FC = () => {
                             </div>
                         </div>
                     )}
-
-                    {/* Placeholder for Recent Activity/Batches */}
-                    {/* <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-6 border border-border-light dark:border-border-dark">
-                        <h2 className="text-lg font-semibold text-text-primary-light dark:text-text-primary-dark mb-4">Atividade Recente</h2>
-                        <p className="text-text-secondary-light dark:text-text-secondary-dark">Lista dos últimos lotes processados...</p>
-                    </div> */}
                 </>
             ) : (
-                 !error && <p className="text-center text-text-secondary-light dark:text-text-secondary-dark py-10">Nenhum dado para exibir no dashboard.</p>
+                 !error && <p className="text-center text-text-secondary-light dark:text-text-secondary-dark py-10">Nenhum dado de KPI para exibir.</p>
             )}
+
+            {/* Charts Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Daily Updates Chart */}
+                <ChartCard
+                    title="Consultas Atualizadas por Dia"
+                    description={`Contagem de CPFs atualizados no período selecionado.`}
+                    icon={Calendar}
+                >
+                    {isLoadingCharts ? <Spinner /> : <DailyUpdatesChart data={dailyChartData} />}
+                </ChartCard>
+
+                {/* Hourly Updates Chart */}
+                <ChartCard
+                    title="Consultas Atualizadas por Hora (Hoje)"
+                    description={`Contagem de CPFs atualizados hoje (${new Date(todayUTCString + 'T00:00:00Z').toLocaleDateString('pt-BR')}). Independente do filtro de data.`}
+                    icon={Activity}
+                >
+                    {/* Hourly chart still uses today's data, not affected by dateRange */}
+                    {isLoadingCharts ? <Spinner /> : <HourlyUpdatesChart data={hourlyChartData} targetDate={todayUTCString} />}
+                </ChartCard>
+            </div>
+
         </div>
     );
 };

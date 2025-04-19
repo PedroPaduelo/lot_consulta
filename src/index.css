@@ -8,3 +8,80 @@
   }
   /* Add other base styles if needed */
 }
+
+/* Custom styles for react-day-picker */
+.rdp {
+  --rdp-cell-size: 40px;
+  --rdp-accent-color: hsl(221, 83%, 53%); /* blue-600 */
+  --rdp-background-color: hsl(210, 40%, 98%); /* gray-50 */
+  --rdp-accent-color-dark: hsl(217, 91%, 60%); /* blue-500 */
+  --rdp-background-color-dark: hsl(222, 47%, 11%); /* gray-900 */
+  --rdp-outline: 2px solid hsl(221, 83%, 53%, 0.5); /* blue-600 with opacity */
+  --rdp-outline-selected: 2px solid hsl(221, 83%, 53%); /* blue-600 */
+  margin: 1em 0;
+  color: hsl(215, 28%, 17%); /* gray-800 */
+}
+
+.rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: hsl(210, 40%, 96%); /* gray-100 */
+}
+
+.rdp-button:focus-visible:not([disabled]) {
+   border: none;
+   outline: var(--rdp-outline);
+   outline-offset: 1px;
+   z-index: 1;
+}
+
+.rdp-day_selected,
+.rdp-day_selected:focus-visible,
+.rdp-day_selected:hover {
+    background-color: hsl(221, 83%, 53%); /* blue-600 */
+    color: hsl(0, 0%, 100%); /* white */
+    opacity: 1;
+}
+.rdp-day_range_start, .rdp-day_range_end {
+    background-color: hsl(221, 83%, 53%) !important; /* blue-600 */
+    color: hsl(0, 0%, 100%) !important; /* white */
+}
+.rdp-day_range_middle {
+    background-color: hsla(221, 83%, 53%, 0.1); /* blue-600 with opacity */
+    border-radius: 0;
+}
+.rdp-caption_label {
+    font-weight: 600;
+}
+.rdp-nav_button {
+    border-radius: 0.375rem; /* rounded-md */
+}
+.rdp-nav_button:hover {
+    background-color: hsl(210, 40%, 96%); /* gray-100 */
+}
+
+/* Dark mode adjustments */
+.dark .rdp {
+   --rdp-accent-color: hsl(217, 91%, 60%); /* blue-500 */
+   --rdp-background-color: hsl(215, 28%, 17%); /* gray-800 */
+   --rdp-outline: 2px solid hsla(217, 91%, 60%, 0.5); /* blue-500 with opacity */
+   --rdp-outline-selected: 2px solid hsl(217, 91%, 60%); /* blue-500 */
+   color: hsl(210, 40%, 98%); /* gray-50 */
+}
+.dark .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+  background-color: hsl(215, 28%, 17%); /* gray-800 */
+}
+.dark .rdp-day_selected,
+.dark .rdp-day_selected:focus-visible,
+.dark .rdp-day_selected:hover {
+    background-color: hsl(217, 91%, 60%); /* blue-500 */
+    color: hsl(0, 0%, 100%); /* white */
+}
+.dark .rdp-day_range_start, .dark .rdp-day_range_end {
+    background-color: hsl(217, 91%, 60%) !important; /* blue-500 */
+    color: hsl(0, 0%, 100%) !important; /* white */
+}
+.dark .rdp-day_range_middle {
+    background-color: hsla(217, 91%, 60%, 0.2); /* blue-500 with opacity */
+}
+.dark .rdp-nav_button:hover {
+    background-color: hsl(215, 28%, 17%); /* gray-800 */
+}
