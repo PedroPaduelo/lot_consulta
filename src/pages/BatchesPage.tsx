@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase, Batch, checkSupabaseConnection, checkTablesExist } from '../utils/supabase'; // Import checkTablesExist
-import { Play, Pause, Trash2, RefreshCw, Clock, CheckCircle, AlertCircle, AlertTriangle, List, Eye } from 'lucide-react';
+import { Play, Pause, Trash2, RefreshCw, Clock, CheckCircle, AlertCircle, AlertTriangle, List, Eye, Percent } from 'lucide-react'; // Import Percent icon
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import Spinner from '../components/ui/Spinner';
@@ -9,6 +9,7 @@ import Dialog from '../components/ui/Dialog';
 import { usePagination } from '../hooks/usePagination';
 import StatusProcessingBadge from '../components/ui/StatusProcessingBadge'; // Import the correct badge
 import DatabaseStatusChecker from '../components/DatabaseStatusChecker'; // Import checker
+import { useAuth } from '../contexts/AuthContext'; // Import useAuth
 
 interface BatchesPageProps {
   onViewDetails: (batchId: string) => void; // Callback to navigate
@@ -29,6 +30,13 @@ type DbStatus = {
   } | null;
 };
 
+// Type returned by the RPC function
+type BatchWithCounts = Omit<Batch, 'progress_percent'> & {
+    processed_count: number;
+    pending_count: number;
+};
+
+
 const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [isLoading, setIsLoading] = useState(true); // Loading batches list
@@ -40,11 +48,14 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
   const [startingJobId, setStartingJobId] = useState<string | null>(null); // Track which job is starting
   const [pausingJobId, setPausingJobId] = useState<string | null>(null); // Track which job is pausing
 
+  const { session, isAdmin, profile } = useAuth(); // Get session, isAdmin flag, and profile
+
   const { currentPage, totalPages, paginatedData, setPage } = usePagination(batches, 5);
 
   // Fetch batches when dbStatus indicates connection and tables are ready
   useEffect(() => {
-    if (dbStatus?.connected && dbStatus.tables?.batches.exists) {
+    // Only fetch if DB is connected and batches table exists
+    if (dbStatus?.connected && dbStatus.tables?.batches.exists && session && profile) {
       fetchBatches();
     } else if (dbStatus) {
       // If dbStatus is set but not ready, stop loading and clear batches
@@ -52,7 +63,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
       setBatches([]);
       // Error messages are handled by DatabaseStatusChecker
     }
-  }, [dbStatus]); // Depend on dbStatus
+  }, [dbStatus, session, profile]); // Depend on dbStatus, session, and profile
 
   // Clear success/error messages after a delay
   useEffect(() => {
@@ -73,8 +84,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
   };
 
   const fetchBatches = async () => {
-    // Only proceed if DB is connected and table exists (checked by useEffect dependency)
-    if (!dbStatus?.connected || !dbStatus.tables?.batches.exists) {
+    // Only proceed if DB is connected, tables exist, and session/profile is available
+    if (!dbStatus?.connected || !dbStatus.tables?.batches.exists || !session || !profile) {
       setIsLoading(false); // Ensure loading stops if called prematurely
       return;
     }
@@ -85,22 +96,42 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
     // setSuccessMessage(null);
 
     try {
-      // Select all columns including the new id_execucao
-      const { data, error: fetchError } = await supabase
-        .from('batches')
-        .select('*')
-        .order('created_at', { ascending: false });
+      console.log('Calling RPC get_batches_with_progress...');
+      // Call the RPC function directly
+      const { data: rpcData, error: rpcError } = await supabase.rpc('get_batches_with_progress', {
+          is_admin_param: isAdmin,
+          user_id_param: profile.id // Pass the current user's ID
+      });
 
-      if (fetchError) {
-        // Specific errors should have been caught by checkTablesExist,
-        // but handle potential runtime errors during fetch
-        throw fetchError;
+      if (rpcError) {
+          console.error('RPC error (get_batches_with_progress):', rpcError);
+          throw new Error(rpcError.message || 'Erro desconhecido ao buscar lotes via RPC.');
       }
-      setBatches(data || []);
-      setError(null); // Clear previous fetch errors on success
+
+      console.log('RPC response data (get_batches_with_progress):', rpcData);
+
+      if (rpcData && Array.isArray(rpcData)) {
+          // Calculate percentage client-side and map to Batch type
+          const batchesWithPercentage: Batch[] = rpcData.map((batch: BatchWithCounts) => {
+              const total = batch.total_cpfs || 0;
+              const processed = batch.processed_count || 0;
+              // Ensure 'Finalizado' status always shows 100%
+              const progress_percent = batch.status === 'Finalizado' ? 100 : (total > 0 ? Math.round((processed / total) * 100) : 0);
+
+              return {
+                  ...batch,
+                  progress_percent: progress_percent,
+              };
+          });
+
+          setBatches(batchesWithPercentage);
+          setError(null); // Clear previous fetch errors on success
+      } else {
+          throw new Error('Resposta inválida da função RPC de listagem de lotes.');
+      }
 
     } catch (err: any) {
-      console.error('Error fetching batches:', err);
+      console.error('Error fetching batches via RPC:', err);
       setError(`Erro ao carregar os lotes: ${err.message || 'Por favor, tente novamente.'}`);
       setBatches([]); // Clear batches on error
     } finally {
@@ -243,8 +274,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
     } catch (e) { return 'Data inválida'; }
   };
 
-  // Determine if actions should be disabled (DB issues or loading)
-  const actionsDisabled = isLoading || !dbStatus?.connected || !dbStatus.tables?.batches.exists;
+  // Determine if actions should be disabled (DB issues, loading, or not authenticated)
+  const actionsDisabled = isLoading || !dbStatus?.connected || !dbStatus.tables?.batches.exists || !session;
 
   return (
     <div className="space-y-8"> {/* Increased spacing */}
@@ -286,7 +317,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
         ) : dbStatus?.connected && dbStatus.tables?.batches.exists && batches.length > 0 ? ( // Show table only if connected, table exists, and batches are loaded
           <>
             {/* Updated Table Headers */}
-            <Table headers={['NOME', 'API', 'ARQUIVO', 'CPFs (V/I)', 'ID EXECUÇÃO', 'STATUS', 'CRIADO EM', 'AÇÕES']}>
+            <Table headers={['NOME', 'API', 'ARQUIVO', 'CPFs (V/I)', 'ID EXECUÇÃO', 'STATUS', 'PROGRESSO', 'CRIADO EM', 'AÇÕES']}> {/* Added 'PROGRESSO' header */}
               {paginatedData.map((batch) => (
                 <tr key={batch.id} className="hover:bg-muted-light/70 dark:hover:bg-muted-dark/70 transition-colors duration-150"> {/* Subtle hover */}
                   {/* Name */}
@@ -318,6 +349,16 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <StatusProcessingBadge status={batch.status} size="sm"/> {/* Use StatusProcessingBadge */}
                   </td>
+                   {/* Progress Percentage */}
+                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                       {batch.total_cpfs > 0 ? (
+                           <div className="flex items-center">
+                               <Percent className="h-4 w-4 mr-1 text-primary-light dark:text-primary-dark" />
+                               {/* Display the calculated progress_percent */}
+                               <span>{batch.progress_percent ?? 0}%</span>
+                           </div>
+                       ) : '-'}
+                   </td>
                   {/* Created At */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
                     {formatDate(batch.created_at)}

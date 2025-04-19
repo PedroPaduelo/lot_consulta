@@ -58,6 +58,10 @@ export type Batch = {
   user_id: string | null; // Added user_id field
   created_at: string;
   updated_at: string;
+  // Added fields from RPC/Edge Function (now populated by RPC call in BatchesPage)
+  processed_count?: number; // Count of records not 'Pendente'
+  pending_count?: number;    // Count of records 'Pendente'
+  progress_percent?: number; // Calculated percentage (client-side)
 };
 
 // Updated CPFRecord type to match potential DB schema more closely
@@ -76,11 +80,11 @@ export type CPFRecord = {
 
 // Helper function to create a new batch
 // No change needed here as user_id defaults to auth.uid() in the database
-export async function createBatch(batchData: Omit<Batch, 'id' | 'created_at' | 'updated_at' | 'id_execucao' | 'user_id'>): Promise<Batch | null> {
+export async function createBatch(batchData: Omit<Batch, 'id' | 'created_at' | 'updated_at' | 'id_execucao' | 'user_id' | 'processed_count' | 'pending_count' | 'progress_percent'>): Promise<Batch | null> {
   try {
     console.log('Creating batch with data (user_id will be set by DB):', batchData);
 
-    const batchToInsert: Omit<Batch, 'id' | 'created_at' | 'updated_at' | 'id_execucao' | 'user_id'> & { status: Batch['status'] } = {
+    const batchToInsert: Omit<Batch, 'id' | 'created_at' | 'updated_at' | 'id_execucao' | 'user_id' | 'processed_count' | 'pending_count' | 'progress_percent'> & { status: Batch['status'] } = {
         ...batchData,
         status: batchData.status || 'Pendente'
     };

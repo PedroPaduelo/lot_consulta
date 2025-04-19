@@ -8,6 +8,7 @@ import BatchDetailsPage from './pages/BatchDetailsPage';
 import LoginPage from './pages/LoginPage';
 import UserManagementPage from './pages/UserManagementPage'; // Import User Management Page
 import { useAuth } from './contexts/AuthContext';
+import Spinner from './components/ui/Spinner'; // Import Spinner
 
 // Define allowed page types including user management
 type PageType = 'upload' | 'consulta' | 'lotes' | 'loteDetalhes' | 'userManagement';
@@ -121,20 +122,27 @@ function AppContent() {
   );
 }
 
-// App component with better error handling
+// App component now handles the initial loading state display
 function App() {
-  const { session, loading } = useAuth();
+  const { session, loading } = useAuth(); // useAuth now works because Provider is always rendered
 
   // Log session state for debugging
   useEffect(() => {
     console.log("App root rendered with session:", session ? "exists" : "none", "loading:", loading);
   }, [session, loading]);
 
-  // If still loading, show nothing (AuthProvider already shows loading spinner)
+  // If still loading the initial session/profile, show the loading indicator
   if (loading) {
-    return null;
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-background-light dark:bg-background-dark">
+        <Spinner size="lg" />
+        <p className="mt-3 text-text-primary-light dark:text-text-primary-dark">Carregando...</p>
+        {/* You could potentially access and display an error from AuthContext here if needed */}
+      </div>
+    );
   }
 
+  // Once loading is false, render based on session existence
   return session ? <AppContent /> : <LoginPage />;
 }
 

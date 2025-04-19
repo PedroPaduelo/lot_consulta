@@ -7,17 +7,15 @@ import Spinner from '../components/ui/Spinner';
 import Table from '../components/ui/Table'; // Import Table
 import Dialog from '../components/ui/Dialog'; // Import Dialog
 
-// Define a type for the user list items from Supabase Auth Admin API
-interface AuthUser {
+// Define a type for the user list items from the public.profiles table
+interface Profile {
     id: string;
-    email?: string;
+    email?: string | null; // Email might be null initially if sync fails?
+    role?: 'admin' | 'operator' | null;
     created_at: string;
-    last_sign_in_at?: string | null;
-    user_metadata: {
-        role?: 'admin' | 'operator';
-        [key: string]: any; // Allow other metadata properties
-    };
-    // Add other fields from listUsers if needed
+    updated_at: string;
+    // Add last_sign_in_at if you sync it via trigger/function (more complex)
+    // For now, we'll fetch it separately if needed or omit it
 }
 
 
@@ -32,14 +30,14 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [errorCreate, setErrorCreate] = useState<string | null>(null);
   const [successCreate, setSuccessCreate] = useState<string | null>(null);
 
-  // State for User List
-  const [users, setUsers] = useState<AuthUser[]>([]);
+  // State for User List (using Profile type)
+  const [users, setUsers] = useState<Profile[]>([]); // Changed type to Profile[]
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [errorUsers, setErrorUsers] = useState<string | null>(null);
 
-  // State for Delete Confirmation
+  // State for Delete Confirmation (using Profile type)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [userToDelete, setUserToDelete] = useState<AuthUser | null>(null);
+  const [userToDelete, setUserToDelete] = useState<Profile | null>(null); // Changed type to Profile | null
   const [loadingDelete, setLoadingDelete] = useState(false);
   const [errorDelete, setErrorDelete] = useState<string | null>(null);
   const [successDelete, setSuccessDelete] = useState<string | null>(null);
@@ -68,9 +66,10 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   }, [errorCreate, successCreate, errorDelete, successDelete, errorUsers]);
 
 
+  // --- Updated fetchUsers to query profiles table ---
   const fetchUsers = async () => {
-    if (!session) {
-        setErrorUsers('Sessão inválida para buscar usuários.');
+    if (!isAdmin) { // Check isAdmin flag directly
+        setErrorUsers('Acesso negado. Apenas administradores podem listar usuários.');
         return;
     }
     setLoadingUsers(true);
@@ -78,26 +77,27 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setUsers([]); // Clear previous list
 
     try {
-        console.log('Invoking list-users function...');
-        const { data, error: invokeError } = await supabase.functions.invoke('list-users', {
-            headers: { Authorization: `Bearer ${session.access_token}` },
-        });
+        console.log('Fetching users from profiles table...');
+        // Admins can select all profiles due to RLS policy "Admins can view all profiles"
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .order('created_at', { ascending: false }); // Order by creation date
 
-        if (invokeError) {
-            console.error('Function invoke error (list-users):', invokeError);
-            let detailedError = invokeError.message;
-             try {
-                 const errorJson = JSON.parse(invokeError.context?.responseText || '{}');
-                 if (errorJson.error) { detailedError = errorJson.error; }
-             } catch (parseErr) { /* Ignore */ }
-            throw new Error(detailedError || 'Erro desconhecido ao buscar usuários.');
+        if (error) {
+            console.error('Error fetching profiles:', error);
+            // Check for RLS violation error (though admin should bypass)
+            if (error.code === '42501' || error.message.includes('policy')) {
+               throw new Error(`Erro de permissão ao buscar perfis: ${error.message}. Verifique as políticas RLS.`);
+            }
+            throw new Error(error.message || 'Erro desconhecido ao buscar perfis.');
         }
 
-        console.log('Function response data (list-users):', data);
-        if (data && Array.isArray(data.users)) {
-            setUsers(data.users);
+        console.log('Fetched profiles data:', data);
+        if (data) {
+            setUsers(data as Profile[]); // Set state with Profile type
         } else {
-            throw new Error('Resposta inválida da função de listagem de usuários.');
+            setUsers([]); // Set empty array if data is null/undefined
         }
 
     } catch (err: any) {
@@ -107,8 +107,10 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setLoadingUsers(false);
     }
   };
+  // --- End of updated fetchUsers ---
 
 
+  // --- handleCreateUser remains the same (uses Edge Function) ---
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isAdmin || !session) {
@@ -133,9 +135,15 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         console.error('Function invoke error (create-user):', invokeError);
         let detailedError = invokeError.message;
         try {
-            const errorJson = JSON.parse(invokeError.context?.responseText || '{}');
-            if (errorJson.error) { detailedError = errorJson.error; }
-        } catch (parseErr) { /* Ignore */ }
+            // Attempt to parse Supabase Edge Function error context if available
+            const errorContext = (invokeError as any).context;
+            if (errorContext && typeof errorContext.responseText === 'string') {
+                const errorJson = JSON.parse(errorContext.responseText || '{}');
+                if (errorJson.error) { detailedError = errorJson.error; }
+            }
+        } catch (parseErr) {
+             console.warn("Could not parse error context:", parseErr);
+        }
         throw new Error(detailedError || 'Erro desconhecido ao chamar a função.');
       }
 
@@ -146,7 +154,7 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       setPassword('');
       setRole('operator');
       // Refresh user list after creation
-      fetchUsers();
+      fetchUsers(); // This will now fetch from profiles table
 
     } catch (err: any) {
       console.error("Create user error:", err);
@@ -155,8 +163,10 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       setLoadingCreate(false);
     }
   };
+  // --- End of handleCreateUser ---
 
-  const handleDeleteUserClick = (user: AuthUser) => {
+  // --- Updated handleDeleteUserClick to use Profile type ---
+  const handleDeleteUserClick = (user: Profile) => { // Changed type to Profile
       if (user.id === currentAdminProfile?.id) {
           setErrorDelete("Você não pode excluir sua própria conta.");
           return;
@@ -166,7 +176,9 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       setErrorDelete(null); // Clear previous delete errors
       setSuccessDelete(null);
   };
+  // --- End of updated handleDeleteUserClick ---
 
+  // --- confirmDeleteUser remains the same (uses Edge Function) ---
   const confirmDeleteUser = async () => {
       if (!userToDelete || !session) {
           setErrorDelete("Usuário não selecionado ou sessão inválida.");
@@ -189,16 +201,22 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               console.error('Function invoke error (delete-user):', invokeError);
               let detailedError = invokeError.message;
               try {
-                  const errorJson = JSON.parse(invokeError.context?.responseText || '{}');
-                  if (errorJson.error) { detailedError = errorJson.error; }
-              } catch (parseErr) { /* Ignore */ }
+                  // Attempt to parse Supabase Edge Function error context if available
+                  const errorContext = (invokeError as any).context;
+                  if (errorContext && typeof errorContext.responseText === 'string') {
+                      const errorJson = JSON.parse(errorContext.responseText || '{}');
+                      if (errorJson.error) { detailedError = errorJson.error; }
+                  }
+              } catch (parseErr) {
+                   console.warn("Could not parse error context:", parseErr);
+              }
               throw new Error(detailedError || 'Erro desconhecido ao excluir usuário.');
           }
 
           console.log('Function response data (delete-user):', data);
           setSuccessDelete(data.message || 'Usuário excluído com sucesso!');
           // Refresh user list after deletion
-          fetchUsers();
+          fetchUsers(); // This will now fetch from profiles table
 
       } catch (err: any) {
           console.error("Delete user error:", err);
@@ -209,6 +227,7 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           setUserToDelete(null);
       }
   };
+  // --- End of confirmDeleteUser ---
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return '-';
@@ -231,7 +250,7 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   return (
     <div className="space-y-8">
-       {/* --- Create User Section --- */}
+       {/* --- Create User Section (No changes needed here) --- */}
        <div>
            <div className="flex items-center mb-6">
              <button
@@ -336,7 +355,7 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </div>
        </div>
 
-       {/* --- User List Section --- */}
+       {/* --- User List Section (Updated to use Profile data) --- */}
        <div>
             <div className="flex items-center justify-between mb-6">
                  <h2 className="text-xl font-semibold text-text-primary-light dark:text-text-primary-dark flex items-center">
@@ -367,15 +386,16 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 ) : users.length === 0 && !errorUsers ? (
                     <p className="text-center text-text-secondary-light dark:text-text-secondary-dark py-6">Nenhum usuário encontrado.</p>
                 ) : !errorUsers ? (
-                    <Table headers={['Email', 'Função (Role)', 'Criado em', 'Último Login', 'Ações']}>
+                    // Updated Table Headers (Removed Last Login as it's not in profiles table)
+                    <Table headers={['Email', 'Função (Role)', 'Criado em', 'Ações']}>
                         {users.map((user) => (
                             <tr key={user.id} className="hover:bg-muted-light/70 dark:hover:bg-muted-dark/70 transition-colors duration-150">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-text-primary-light dark:text-text-primary-dark">{user.email || '-'}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark capitalize">
-                                    {user.user_metadata?.role || 'N/A'}
+                                    {user.role || 'N/A'} {/* Use role from profiles */}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">{formatDate(user.created_at)}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">{formatDate(user.last_sign_in_at)}</td>
+                                {/* Removed Last Login column */}
                                 <td className="px-6 py-4 whitespace-nowrap text-sm">
                                     <button
                                         onClick={() => handleDeleteUserClick(user)}
@@ -393,7 +413,7 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </div>
        </div>
 
-        {/* Delete Confirmation Dialog */}
+        {/* Delete Confirmation Dialog (No changes needed here) */}
         <Dialog
             isOpen={isDeleteDialogOpen}
             onClose={() => setIsDeleteDialogOpen(false)}

@@ -7,7 +7,7 @@ console.log(`Function "list-users" up and running!`)
 serve(async (req: Request) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    // CRITICAL: Return 200 OK status for OPTIONS preflight
+    // CRITICAL: Return 200 OK status explicitly for OPTIONS preflight
     return new Response('ok', { headers: corsHeaders, status: 200 })
   }
 
