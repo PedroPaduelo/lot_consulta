@@ -1,27 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { FileSpreadsheet, Search, Menu, X, List, UserPlus } from 'lucide-react'; // Added UserPlus
+import { FileSpreadsheet, Search, Menu, X, List, UserPlus, BarChart2 } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import UploadPage from './pages/UploadPage';
 import ConsultaPage from './pages/ConsultaPage';
 import BatchesPage from './pages/BatchesPage';
 import BatchDetailsPage from './pages/BatchDetailsPage';
 import LoginPage from './pages/LoginPage';
-import UserManagementPage from './pages/UserManagementPage'; // Import User Management Page
+import UserManagementPage from './pages/UserManagementPage';
+import DashboardPage from './pages/DashboardPage';
 import { useAuth } from './contexts/AuthContext';
-import Spinner from './components/ui/Spinner'; // Import Spinner
+import Spinner from './components/ui/Spinner';
 
-// Define allowed page types including user management
-type PageType = 'upload' | 'consulta' | 'lotes' | 'loteDetalhes' | 'userManagement';
+// Define allowed page types including dashboard and user management
+type PageType = 'dashboard' | 'upload' | 'consulta' | 'lotes' | 'loteDetalhes' | 'userManagement';
 
+// This component remains the main UI structure when logged in
 function AppContent() {
-  const [currentPage, setCurrentPage] = useState<PageType>('upload');
+  const [currentPage, setCurrentPage] = useState<PageType>('dashboard'); // Default to dashboard
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { profile, isAdmin } = useAuth(); // Get user profile and isAdmin flag
+  const { profile, isAdmin } = useAuth(); // useAuth is safe here as AppContent is rendered inside AppLayout
 
   // Log profile and isAdmin for debugging
   useEffect(() => {
-    console.log("App rendered with profile:", profile?.email, "isAdmin:", isAdmin);
+    console.log("AppContent rendered with profile:", profile?.email, "isAdmin:", isAdmin);
   }, [profile, isAdmin]);
 
   const toggleSidebar = () => {
@@ -40,14 +42,15 @@ function AppContent() {
 
   // Function to navigate back from UserManagement or BatchDetails
   const handleBackNavigation = () => {
-      // Default back to 'upload' or maybe 'lotes' if coming from details?
-      // For simplicity, let's default back to 'upload' unless we add more complex state.
-      setCurrentPage('upload');
+      // Default back to 'dashboard'
+      setCurrentPage('dashboard');
   };
 
 
   const renderPage = () => {
     switch (currentPage) {
+      case 'dashboard':
+        return <DashboardPage />;
       case 'upload':
         return <UploadPage />;
       case 'consulta':
@@ -62,19 +65,20 @@ function AppContent() {
         );
       case 'userManagement':
         // Ensure only admins can access this page directly
-        return isAdmin ? <UserManagementPage onBack={handleBackNavigation} /> : <UploadPage />; // Redirect non-admins
+        return isAdmin ? <UserManagementPage onBack={handleBackNavigation} /> : <DashboardPage />; // Redirect non-admins to dashboard
       default:
-        return <UploadPage />;
+        return <DashboardPage />; // Default to dashboard
     }
   };
 
   // Determine the active page for the sidebar highlight
-  const getSidebarActivePage = (): 'upload' | 'consulta' | 'lotes' | 'userManagement' => {
+  const getSidebarActivePage = (): 'dashboard' | 'upload' | 'consulta' | 'lotes' | 'userManagement' => {
       if (currentPage === 'loteDetalhes') return 'lotes';
       if (currentPage === 'userManagement') return 'userManagement';
       if (currentPage === 'consulta') return 'consulta';
       if (currentPage === 'lotes') return 'lotes';
-      return 'upload'; // Default
+      if (currentPage === 'upload') return 'upload';
+      return 'dashboard'; // Default
   };
 
 
@@ -98,7 +102,7 @@ function AppContent() {
             }
             // Ensure only admins can navigate to user management
             if (page === 'userManagement' && !isAdmin) {
-                setCurrentPage('upload'); // Or show an error/redirect
+                setCurrentPage('dashboard'); // Redirect non-admins to dashboard
             } else {
                 setCurrentPage(page);
             }
@@ -122,13 +126,13 @@ function AppContent() {
   );
 }
 
-// App component now handles the initial loading state display
-function App() {
-  const { session, loading } = useAuth(); // useAuth now works because Provider is always rendered
+// New component to handle auth state and loading
+function AppLayout() {
+  const { session, loading } = useAuth(); // Call useAuth here
 
   // Log session state for debugging
   useEffect(() => {
-    console.log("App root rendered with session:", session ? "exists" : "none", "loading:", loading);
+    console.log("AppLayout rendered with session:", session ? "exists" : "none", "loading:", loading);
   }, [session, loading]);
 
   // If still loading the initial session/profile, show the loading indicator
@@ -137,13 +141,18 @@ function App() {
       <div className="flex flex-col items-center justify-center h-screen bg-background-light dark:bg-background-dark">
         <Spinner size="lg" />
         <p className="mt-3 text-text-primary-light dark:text-text-primary-dark">Carregando...</p>
-        {/* You could potentially access and display an error from AuthContext here if needed */}
       </div>
     );
   }
 
   // Once loading is false, render based on session existence
   return session ? <AppContent /> : <LoginPage />;
+}
+
+// The main App component now just renders the AppLayout
+// It doesn't need to call useAuth directly anymore
+function App() {
+  return <AppLayout />;
 }
 
 export default App;

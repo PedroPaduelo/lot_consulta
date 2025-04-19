@@ -1,12 +1,12 @@
 import React from 'react';
-import { FileSpreadsheet, Search, List, LogOut, UserCircle, ShieldCheck, UserPlus } from 'lucide-react'; // Added UserPlus
+import { FileSpreadsheet, Search, List, LogOut, UserCircle, ShieldCheck, UserPlus, BarChart2 } from 'lucide-react'; // Added BarChart2
 import ThemeSwitcher from './ui/ThemeSwitcher';
 import { useAuth } from '../contexts/AuthContext'; // Import useAuth
 import { UserProfile } from '../utils/supabase'; // Import UserProfile type
 
 interface SidebarProps {
-  currentPage: 'upload' | 'consulta' | 'lotes' | 'userManagement'; // Added userManagement
-  setCurrentPage: (page: 'upload' | 'consulta' | 'lotes' | 'userManagement') => void; // Added userManagement
+  currentPage: 'upload' | 'consulta' | 'lotes' | 'userManagement' | 'dashboard'; // Added dashboard
+  setCurrentPage: (page: 'upload' | 'consulta' | 'lotes' | 'userManagement' | 'dashboard') => void; // Added dashboard
   isOpen: boolean;
   closeSidebar: () => void;
   userProfile: UserProfile | null; // Receive user profile
@@ -21,12 +21,12 @@ const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { signOut, isAdmin } = useAuth(); // Get signOut function and isAdmin flag
 
-  const handleNavigation = (page: 'upload' | 'consulta' | 'lotes' | 'userManagement') => {
+  const handleNavigation = (page: 'upload' | 'consulta' | 'lotes' | 'userManagement' | 'dashboard') => {
     setCurrentPage(page);
     // closeSidebar(); // Closing is handled in App.tsx now for mobile
   };
 
-  const getButtonClasses = (page: 'upload' | 'consulta' | 'lotes' | 'userManagement') => {
+  const getButtonClasses = (page: 'upload' | 'consulta' | 'lotes' | 'userManagement' | 'dashboard') => {
     const baseClasses = 'w-full flex items-center px-6 py-3 text-left transition-all duration-200 ease-in-out text-sm font-medium group'; // Added group for potential hover effects on icon
     const activeClasses = 'bg-primary-light/10 dark:bg-primary-dark/20 text-primary-light dark:text-primary-dark border-r-4 border-primary-light dark:border-primary-dark font-semibold'; // Refined active style
     const inactiveClasses = 'text-text-secondary-light dark:text-text-secondary-dark hover:bg-muted-light dark:hover:bg-muted-dark hover:text-text-primary-light dark:hover:text-text-primary-dark';
@@ -94,6 +94,12 @@ const Sidebar: React.FC<SidebarProps> = ({
         {/* Navigation */}
         <nav className="mt-5 flex-grow px-2 space-y-1"> {/* Added padding and spacing */}
           <ul>
+             <li>
+               <button onClick={() => handleNavigation('dashboard')} className={getButtonClasses('dashboard')}>
+                 <BarChart2 className="mr-3 h-5 w-5 flex-shrink-0" />
+                 Dashboard
+               </button>
+             </li>
             <li>
               <button onClick={() => handleNavigation('upload')} className={getButtonClasses('upload')}>
                 <FileSpreadsheet className="mr-3 h-5 w-5 flex-shrink-0" />

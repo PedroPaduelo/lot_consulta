@@ -66,7 +66,7 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   }, [errorCreate, successCreate, errorDelete, successDelete, errorUsers]);
 
 
-  // --- Updated fetchUsers to query profiles table ---
+  // --- fetchUsers remains the same (queries profiles table) ---
   const fetchUsers = async () => {
     if (!isAdmin) { // Check isAdmin flag directly
         setErrorUsers('Acesso negado. Apenas administradores podem listar usuários.');
@@ -107,7 +107,7 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         setLoadingUsers(false);
     }
   };
-  // --- End of updated fetchUsers ---
+  // --- End of fetchUsers ---
 
 
   // --- handleCreateUser remains the same (uses Edge Function) ---
@@ -165,7 +165,7 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   };
   // --- End of handleCreateUser ---
 
-  // --- Updated handleDeleteUserClick to use Profile type ---
+  // --- handleDeleteUserClick remains the same (uses Profile type) ---
   const handleDeleteUserClick = (user: Profile) => { // Changed type to Profile
       if (user.id === currentAdminProfile?.id) {
           setErrorDelete("Você não pode excluir sua própria conta.");
@@ -178,9 +178,9 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   };
   // --- End of updated handleDeleteUserClick ---
 
-  // --- confirmDeleteUser remains the same (uses Edge Function) ---
+  // --- Updated confirmDeleteUser to use RPC ---
   const confirmDeleteUser = async () => {
-      if (!userToDelete || !session) {
+      if (!userToDelete || !session) { // Still need session to ensure caller is authenticated
           setErrorDelete("Usuário não selecionado ou sessão inválida.");
           setIsDeleteDialogOpen(false);
           return;
@@ -191,43 +191,47 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       setSuccessDelete(null);
 
       try {
-          console.log(`Invoking delete-user function for user ID: ${userToDelete.id}`);
-          const { data, error: invokeError } = await supabase.functions.invoke('delete-user', {
-              body: { userId: userToDelete.id },
-              headers: { Authorization: `Bearer ${session.access_token}` },
+          console.log(`Calling RPC delete_user_rpc for user ID: ${userToDelete.id}`);
+          // Call the RPC function instead of invoking the Edge Function
+          const { data: rpcResponse, error: rpcError } = await supabase.rpc('delete_user_rpc', {
+              user_id_to_delete: userToDelete.id
           });
 
-          if (invokeError) {
-              console.error('Function invoke error (delete-user):', invokeError);
-              let detailedError = invokeError.message;
-              try {
-                  // Attempt to parse Supabase Edge Function error context if available
-                  const errorContext = (invokeError as any).context;
-                  if (errorContext && typeof errorContext.responseText === 'string') {
-                      const errorJson = JSON.parse(errorContext.responseText || '{}');
-                      if (errorJson.error) { detailedError = errorJson.error; }
-                  }
-              } catch (parseErr) {
-                   console.warn("Could not parse error context:", parseErr);
-              }
-              throw new Error(detailedError || 'Erro desconhecido ao excluir usuário.');
+          if (rpcError) {
+              console.error('RPC error (delete_user_rpc):', rpcError);
+              // Attempt to extract a more specific message if possible
+              const message = rpcError.details || rpcError.message || 'Erro desconhecido ao chamar RPC.';
+              throw new Error(message);
           }
 
-          console.log('Function response data (delete-user):', data);
-          setSuccessDelete(data.message || 'Usuário excluído com sucesso!');
-          // Refresh user list after deletion
-          fetchUsers(); // This will now fetch from profiles table
+          console.log('RPC response data (delete_user_rpc):', rpcResponse);
+
+          // Check the response structure from the RPC function
+          if (rpcResponse && rpcResponse.success === false && rpcResponse.error) {
+              // Handle errors returned explicitly by the RPC function
+              throw new Error(rpcResponse.error);
+          } else if (rpcResponse && rpcResponse.success === true) {
+              // Handle success
+              setSuccessDelete(rpcResponse.message || 'Usuário excluído com sucesso!');
+              // Refresh user list after deletion
+              fetchUsers(); // This will now fetch from profiles table
+          } else {
+              // Handle unexpected response structure
+              console.warn('Unexpected RPC response structure:', rpcResponse);
+              throw new Error('Resposta inesperada da função de exclusão.');
+          }
 
       } catch (err: any) {
-          console.error("Delete user error:", err);
-          setErrorDelete(err.message || 'Falha ao excluir usuário.');
+          console.error("Delete user error (RPC):", err);
+          // Display the error message from the catch block
+          setErrorDelete(err.message || 'Falha ao excluir usuário via RPC.');
       } finally {
           setLoadingDelete(false);
           setIsDeleteDialogOpen(false);
           setUserToDelete(null);
       }
   };
-  // --- End of confirmDeleteUser ---
+  // --- End of updated confirmDeleteUser ---
 
   const formatDate = (dateString: string | null | undefined) => {
     if (!dateString) return '-';
@@ -321,110 +325,130 @@ const UserManagementPage: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                     <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                     <span className="text-sm text-text-primary-light dark:text-text-primary-dark">Operador</span>
                   </label>
-                  <label className="flex items-center space-x-2 cursor-pointer p-3 rounded-lg border border-border-light dark:border-border-dark hover:bg-muted-light dark:hover:bg-muted-dark has-[:checked]:bg-red-100 dark:has-[:checked]:bg-red-900/50 has-[:checked]:border-red-500 dark:has-[:checked]:border-red-500 transition-colors duration-150">
+                  {/* FIX: Complete the className string below */}
+                  <label className="flex items-center space-x-2 cursor-pointer p-3 rounded-lg border border-border-light dark:border-border-dark hover:bg-muted-light dark:hover:bg-muted-dark has-[:checked]:bg-red-100 dark:has-[:checked]:bg-red-900/50 has-[:checked]:border-red-500 dark:has-[:checked]:border-red-600 transition-colors duration-150">
                     <input
                       type="radio"
                       name="role"
                       value="admin"
                       checked={role === 'admin'}
                       onChange={() => setRole('admin')}
-                      className="form-radio h-4 w-4 text-red-600 dark:text-red-500 focus:ring-red-500 dark:focus:ring-red-600 border-gray-300 dark:border-gray-600 bg-surface-light dark:bg-surface-dark"
+                      className="form-radio h-4 w-4 text-primary-light dark:text-primary-dark focus:ring-primary-light dark:focus:ring-primary-dark border-gray-300 dark:border-gray-600 bg-surface-light dark:bg-surface-dark"
                     />
-                     <ShieldCheck className="h-5 w-5 text-red-600 dark:text-red-400" />
+                    <ShieldCheck className="h-5 w-5 text-red-600 dark:text-red-400" />
                     <span className="text-sm text-text-primary-light dark:text-text-primary-dark">Admin</span>
                   </label>
                 </div>
               </div>
 
-              {/* Error/Success Messages for Create */}
+              {/* Feedback Messages */}
               {errorCreate && <Alert type="error" message={errorCreate} />}
               {successCreate && <Alert type="success" message={successCreate} />}
 
               {/* Submit Button */}
-              <div className="pt-2">
+              <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  disabled={loadingCreate || !email || password.length < 6}
-                  className="w-full px-6 py-2.5 bg-primary-light dark:bg-primary-dark text-white rounded-lg font-semibold hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 dark:focus:ring-offset-surface-light dark:focus:ring-offset-surface-dark disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center transition-all duration-200 ease-in-out shadow-sm hover:shadow-md"
+                  className="px-6 py-2.5 bg-primary-light dark:bg-primary-dark text-white rounded-lg font-semibold hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 dark:focus:ring-offset-background-dark disabled:opacity-60 disabled:cursor-not-allowed flex items-center transition-all duration-200 ease-in-out shadow-sm hover:shadow-md"
+                  disabled={loadingCreate}
                 >
-                  {loadingCreate ? <Spinner size="sm" color="white" className="mr-2" /> : <UserPlus className="h-5 w-5 mr-2" />}
-                  {loadingCreate ? 'Criando...' : 'Criar Usuário'}
+                  {loadingCreate ? (
+                    <>
+                      <Spinner size="sm" color="white" className="mr-2" />
+                      Criando...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="h-5 w-5 mr-2" />
+                      Criar Usuário
+                    </>
+                  )}
                 </button>
               </div>
             </form>
           </div>
        </div>
 
-       {/* --- User List Section (Updated to use Profile data) --- */}
+       {/* --- User List Section --- */}
        <div>
-            <div className="flex items-center justify-between mb-6">
-                 <h2 className="text-xl font-semibold text-text-primary-light dark:text-text-primary-dark flex items-center">
-                   <Users className="mr-3 h-6 w-6 text-primary-light dark:text-primary-dark" />
-                   Usuários Cadastrados
-                 </h2>
-                 <button
-                    onClick={fetchUsers}
-                    disabled={loadingUsers}
-                    className="px-3 py-1.5 bg-muted-light dark:bg-muted-dark text-text-secondary-light dark:text-text-secondary-dark rounded-lg text-sm hover:bg-gray-200 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 dark:focus:ring-offset-background-dark flex items-center disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                    title="Atualizar lista"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${loadingUsers ? 'animate-spin' : ''}`} />
-                  </button>
-            </div>
+           <div className="flex items-center justify-between mb-6">
+             <h1 className="text-2xl font-semibold text-text-primary-light dark:text-text-primary-dark flex items-center">
+               <Users className="mr-3 h-6 w-6 text-primary-light dark:text-primary-dark" />
+               Usuários Cadastrados
+             </h1>
+             <button
+                onClick={fetchUsers}
+                disabled={loadingUsers}
+                className="px-4 py-2 bg-primary-light dark:bg-primary-dark text-white rounded-lg font-medium text-sm hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 dark:focus:ring-offset-background-dark flex items-center disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out shadow-sm hover:shadow-md"
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${loadingUsers ? 'animate-spin' : ''}`} />
+                {loadingUsers ? 'Atualizando...' : 'Atualizar Lista'}
+              </button>
+           </div>
 
-            <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-6 border border-border-light dark:border-border-dark">
-                {/* Error/Success Messages for Delete/List */}
+           <div className="bg-surface-light dark:bg-surface-dark rounded-xl shadow-card dark:shadow-card-dark p-6 border border-border-light dark:border-border-dark">
+                {/* Feedback Messages for List/Delete */}
                 {errorUsers && <Alert type="error" message={errorUsers} />}
                 {errorDelete && <Alert type="error" message={errorDelete} />}
                 {successDelete && <Alert type="success" message={successDelete} />}
 
-                {loadingUsers ? (
-                    <div className="text-center py-8">
+                {loadingUsers && users.length === 0 ? (
+                    <div className="text-center py-10">
                         <Spinner size="lg" />
                         <p className="mt-3 text-text-secondary-light dark:text-text-secondary-dark">Carregando usuários...</p>
                     </div>
-                ) : users.length === 0 && !errorUsers ? (
-                    <p className="text-center text-text-secondary-light dark:text-text-secondary-dark py-6">Nenhum usuário encontrado.</p>
-                ) : !errorUsers ? (
-                    // Updated Table Headers (Removed Last Login as it's not in profiles table)
-                    <Table headers={['Email', 'Função (Role)', 'Criado em', 'Ações']}>
+                ) : !loadingUsers && users.length === 0 && !errorUsers ? (
+                    <p className="text-center text-text-secondary-light dark:text-text-secondary-dark py-10">Nenhum usuário encontrado.</p>
+                ) : users.length > 0 ? (
+                    <Table headers={['Email', 'Role', 'Criado em', 'Ações']}>
                         {users.map((user) => (
                             <tr key={user.id} className="hover:bg-muted-light/70 dark:hover:bg-muted-dark/70 transition-colors duration-150">
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-text-primary-light dark:text-text-primary-dark">{user.email || '-'}</td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark capitalize">
-                                    {user.role || 'N/A'} {/* Use role from profiles */}
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-text-primary-light dark:text-text-primary-dark">
+                                    {user.email || 'N/A'}
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">{formatDate(user.created_at)}</td>
-                                {/* Removed Last Login column */}
-                                <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                <td className="px-6 py-4 whitespace-nowrap text-sm capitalize">
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium capitalize ${
+                                        user.role === 'admin'
+                                        ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300 border border-red-300 dark:border-red-700'
+                                        : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
+                                    }`}>
+                                        {user.role === 'admin' && <ShieldCheck className="h-3 w-3 mr-1" />}
+                                        {user.role || 'N/A'}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
+                                    {formatDate(user.created_at)}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-light dark:text-text-secondary-dark">
                                     <button
                                         onClick={() => handleDeleteUserClick(user)}
-                                        disabled={loadingDelete || user.id === currentAdminProfile?.id} // Disable delete for self or while deleting
+                                        disabled={loadingDelete || user.id === currentAdminProfile?.id} // Disable if deleting or it's the current admin
                                         className="p-1.5 rounded-md text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/50 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                        title={user.id === currentAdminProfile?.id ? "Não pode excluir a si mesmo" : "Excluir usuário"}
+                                        title={user.id === currentAdminProfile?.id ? "Não pode excluir a própria conta" : "Excluir usuário"}
                                     >
-                                        {userToDelete?.id === user.id && loadingDelete ? <Spinner size="sm" /> : <Trash2 className="h-5 w-5" />}
+                                        <Trash2 className="h-5 w-5" />
                                     </button>
                                 </td>
                             </tr>
                         ))}
                     </Table>
-                ) : null /* Error is handled by Alert above */}
-            </div>
+                ) : null}
+           </div>
        </div>
 
-        {/* Delete Confirmation Dialog (No changes needed here) */}
-        <Dialog
-            isOpen={isDeleteDialogOpen}
-            onClose={() => setIsDeleteDialogOpen(false)}
-            onConfirm={confirmDeleteUser}
-            title="Confirmar Exclusão de Usuário"
-            confirmText={loadingDelete ? 'Excluindo...' : 'Excluir'}
-            confirmButtonClass={`bg-red-600 hover:bg-red-700 focus:ring-red-500 dark:bg-red-700 dark:hover:bg-red-800 dark:focus:ring-red-600 ${loadingDelete ? 'opacity-70 cursor-wait' : ''}`}
-        >
-            <p>Tem certeza que deseja excluir o usuário <strong className="text-text-primary-light dark:text-text-primary-dark">{userToDelete?.email}</strong>?</p>
-            <p className="mt-2 font-medium text-red-600 dark:text-red-400">Esta ação não pode ser desfeita.</p>
-        </Dialog>
+       {/* Delete Confirmation Dialog */}
+       <Dialog
+         isOpen={isDeleteDialogOpen}
+         onClose={() => setIsDeleteDialogOpen(false)}
+         onConfirm={confirmDeleteUser}
+         title="Confirmar Exclusão de Usuário"
+         confirmText={loadingDelete ? 'Excluindo...' : 'Excluir'}
+         confirmButtonClass={`bg-red-600 hover:bg-red-700 focus:ring-red-500 dark:bg-red-700 dark:hover:bg-red-800 dark:focus:ring-red-600 ${loadingDelete ? 'opacity-70 cursor-wait' : ''}`}
+       >
+         <p>Tem certeza que deseja excluir o usuário <strong>{userToDelete?.email || 'este usuário'}</strong>?</p>
+         <p className="mt-1 text-sm">Esta ação removerá permanentemente o usuário do sistema de autenticação e seus dados associados (como perfil).</p>
+         <p className="mt-2 font-medium text-red-600 dark:text-red-400">Esta ação não pode ser desfeita.</p>
+       </Dialog>
     </div>
   );
 };
