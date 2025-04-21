@@ -224,7 +224,8 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
       // 2. Prepare data for the sheet, parsing the 'result' JSON
       const dataToExport = recordsToExport.map(record => {
         let banco = '-';
-        let valorLiberado = '-'; // Changed from valorLiquido to valorLiberado
+        let valorLiberado = '-';
+        let codigo = '-'; // Added codigo field
         let parsedResult: any = null;
 
         // Safely parse result JSON string or use if already object
@@ -245,8 +246,9 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
         // Extract data from the parsed 'body' if available
         if (parsedResult && parsedResult.body && typeof parsedResult.body === 'object') {
           banco = parsedResult.body.banco || '-';
-          valorLiberado = parsedResult.body.valorliberado || '-'; // Use valorliberado
-          console.log(`[Export] CPF: ${record.cpf}, Banco: ${banco}, Valor Liberado: ${valorLiberado}`); // Debug log
+          valorLiberado = parsedResult.body.valorliberado || '-';
+          codigo = parsedResult.body.codigo || '-'; // Extract codigo
+          console.log(`[Export] CPF: ${record.cpf}, Banco: ${banco}, Valor Liberado: ${valorLiberado}, Código: ${codigo}`); // Debug log
         } else {
             console.warn(`[Export] Result body not found or not an object for CPF ${record.cpf}. Result:`, record.result); // Debug log
         }
@@ -255,8 +257,9 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
           'CPF': formatCPF(record.cpf),
           'Nome': record.nome,
           'Telefone': record.telefone || '-',
-          'Banco': banco, // Use extracted banco
-          'Valor Liberado': valorLiberado, // Use extracted valorLiberado
+          'Banco': banco,
+          'Valor Liberado': valorLiberado,
+          'Código': codigo, // Added Código column
           'Status Processamento': record.status,
           'Data Atualização': formatDate(record.updated_at),
         };
@@ -274,6 +277,7 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
         { wch: 15 }, // Telefone
         { wch: 20 }, // Banco
         { wch: 15 }, // Valor Liberado
+        { wch: 10 }, // Código (New)
         { wch: 20 }, // Status Processamento
         { wch: 20 }, // Data Atualização
       ];

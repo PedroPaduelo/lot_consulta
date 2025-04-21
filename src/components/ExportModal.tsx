@@ -65,7 +65,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
         {/* Content - Filters */}
         <div className="px-6 py-5 overflow-y-auto flex-grow space-y-4">
            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
-             Selecione os filtros para exportar os registros de CPF. A exportação incluirá CPF, Nome, Telefone, Banco, Valor Líquido e Data de Atualização.
+             Selecione os filtros para exportar os registros de CPF. A exportação incluirá CPF, Nome, Telefone, Banco, Valor Liberado, Código, Status e Data de Atualização.
            </p>
            <p className="text-sm text-text-secondary-light dark:text-text-secondary-dark">
              Total de registros no lote: <span className="font-medium text-text-primary-light dark:text-text-primary-dark">{recordCount}</span>
