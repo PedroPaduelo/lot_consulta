@@ -203,13 +203,13 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
     setIsResultModalOpen(true);
   };
 
-  // --- START EXPORT FUNCTION (Now accepts filters) ---
+  // --- START UPDATED EXPORT FUNCTION ---
   const handleExportExcel = (filters: { status: CPFStatusFilter }) => {
     setIsExporting(true);
     setExportError(null);
 
     try {
-      // 1. Apply filters
+      // 1. Apply status filters
       let recordsToExport = cpfRecords;
       if (filters.status !== 'all') {
         recordsToExport = cpfRecords.filter(record => record.status === filters.status);
@@ -221,40 +221,41 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
         return;
       }
 
-      // 2. Prepare data for the sheet, extracting specific fields and adding updated_at
+      // 2. Prepare data for the sheet, parsing the 'result' JSON
       const dataToExport = recordsToExport.map(record => {
         let banco = '-';
-        let valorLiquido = '-';
+        let valorLiberado = '-'; // Changed from valorLiquido to valorLiberado
+        let parsedResult: any = null;
 
-        // Safely parse result JSON
-        if (record.result && typeof record.result === 'object') {
+        // Safely parse result JSON string
+        if (record.result && typeof record.result === 'string') {
           try {
-            banco = record.result.banco || '-';
-            valorLiquido = record.result.valor_liquido || '-';
+            parsedResult = JSON.parse(record.result);
           } catch (parseError) {
-            console.error(`Error parsing result JSON for CPF ${record.cpf}:`, parseError);
+            console.error(`Error parsing result string for CPF ${record.cpf}:`, parseError);
+            // Keep default values if parsing fails
           }
-        } else if (typeof record.result === 'string') {
-            try {
-                const parsedResult = JSON.parse(record.result);
-                banco = parsedResult.banco || '-';
-                valorLiquido = parsedResult.valor_liquido || '-';
-            } catch (parseError) {
-                console.error(`Error parsing result string for CPF ${record.cpf}:`, parseError);
-            }
+        } else if (record.result && typeof record.result === 'object') {
+            // Handle case where result might already be an object (less likely if stored as JSON string)
+            parsedResult = record.result;
+        }
+
+        // Extract data from the parsed 'body' if available
+        if (parsedResult && parsedResult.body && typeof parsedResult.body === 'object') {
+          banco = parsedResult.body.banco || '-';
+          valorLiberado = parsedResult.body.valorliberado || '-'; // Use valorliberado
+        } else {
+            console.warn(`Result body not found or not an object for CPF ${record.cpf}`);
         }
 
         return {
           'CPF': formatCPF(record.cpf),
           'Nome': record.nome,
           'Telefone': record.telefone || '-',
-          'Banco': banco,
-          'Valor Líquido': valorLiquido,
-          'Status Processamento': record.status, // Include status in export
-          'Data Atualização': formatDate(record.updated_at), // Add formatted updated_at
-          // Optional: Keep other fields if needed
-          // 'Data Criação': formatDate(record.created_at),
-          // 'Validação Inicial': record.isValid ? 'Válido' : 'Inválido',
+          'Banco': banco, // Use extracted banco
+          'Valor Liberado': valorLiberado, // Use extracted valorLiberado
+          'Status Processamento': record.status,
+          'Data Atualização': formatDate(record.updated_at),
         };
       });
 
@@ -269,15 +270,13 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
         { wch: 30 }, // Nome
         { wch: 15 }, // Telefone
         { wch: 20 }, // Banco
-        { wch: 15 }, // Valor Líquido
+        { wch: 15 }, // Valor Liberado
         { wch: 20 }, // Status Processamento
         { wch: 20 }, // Data Atualização
-        // { wch: 20 }, // Data Criação (if kept)
-        // { wch: 15 }, // Validação Inicial (if kept)
       ];
 
       // 4. Generate and trigger download
-      const filename = `lote_${batch?.name || batchId.substring(0,8)}_status_${filters.status}.xlsx`; // Dynamic filename
+      const filename = `lote_${batch?.name || batchId.substring(0,8)}_status_${filters.status}.xlsx`;
       XLSX.writeFile(workbook, filename);
       setIsExportModalOpen(false); // Close modal on successful export
 
@@ -289,7 +288,7 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
       setIsExporting(false);
     }
   };
-  // --- END EXPORT FUNCTION ---
+  // --- END UPDATED EXPORT FUNCTION ---
 
   // Helper to render detail items
   const DetailItem: React.FC<{ icon: React.ElementType, label: string, value: React.ReactNode }> = ({ icon: Icon, label, value }) => (
