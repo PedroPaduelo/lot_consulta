@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, Batch, checkSupabaseConnection, checkTablesExist } from '../utils/supabase'; // Import checkTablesExist
-import { Play, Pause, Trash2, RefreshCw, Clock, CheckCircle, AlertCircle, AlertTriangle, List, Eye, Percent } from 'lucide-react'; // Import Percent icon
+import { supabase, Batch, CPFRecord, checkSupabaseConnection, checkTablesExist } from '../utils/supabase'; // Import checkTablesExist and CPFRecord
+import { Play, Pause, Trash2, RefreshCw, Clock, CheckCircle, AlertCircle, AlertTriangle, List, Eye, Percent, Download } from 'lucide-react'; // Import Percent and Download icons
 import Table from '../components/ui/Table';
 import Pagination from '../components/ui/Pagination';
 import Spinner from '../components/ui/Spinner';
@@ -10,6 +10,8 @@ import { usePagination } from '../hooks/usePagination';
 import StatusProcessingBadge from '../components/ui/StatusProcessingBadge'; // Import the correct badge
 import DatabaseStatusChecker from '../components/DatabaseStatusChecker'; // Import checker
 import { useAuth } from '../contexts/AuthContext'; // Import useAuth
+import * as XLSX from 'xlsx'; // Import xlsx library
+import { formatCPF } from '../utils/validators'; // Import formatCPF
 
 interface BatchesPageProps {
   onViewDetails: (batchId: string) => void; // Callback to navigate
@@ -48,6 +50,10 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
   const [startingJobId, setStartingJobId] = useState<string | null>(null); // Track which job is starting
   const [pausingJobId, setPausingJobId] = useState<string | null>(null); // Track which job is pausing
 
+  // State for Global Export
+  const [isGlobalExporting, setIsGlobalExporting] = useState(false);
+  const [globalExportError, setGlobalExportError] = useState<string | null>(null);
+
   const { session, isAdmin, profile } = useAuth(); // Get session, isAdmin flag, and profile
 
   const { currentPage, totalPages, paginatedData, setPage } = usePagination(batches, 5);
@@ -67,20 +73,22 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
 
   // Clear success/error messages after a delay
   useEffect(() => {
-    if (error || successMessage) {
+    if (error || successMessage || globalExportError) { // Include globalExportError
       const timer = setTimeout(() => {
         setError(null);
         setSuccessMessage(null);
+        setGlobalExportError(null); // Clear global export error
       }, 5000); // Clear after 5 seconds
       return () => clearTimeout(timer);
     }
-  }, [error, successMessage]);
+  }, [error, successMessage, globalExportError]);
 
   // Callback for DatabaseStatusChecker
   const handleDatabaseStatusChange = (status: DbStatus) => {
     setDbStatus(status);
     // Clear previous fetch errors when status changes
     setError(null);
+    setGlobalExportError(null); // Clear global export error on status change
   };
 
   const fetchBatches = async () => {
@@ -144,6 +152,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
     setStartingJobId(batchId);
     setError(null);
     setSuccessMessage(null);
+    setGlobalExportError(null); // Clear export error
 
     console.log(`Attempting to start job for batch: ${batchId}`);
 
@@ -184,6 +193,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
     setPausingJobId(batchId); // Use a separate state for pausing
     setError(null);
     setSuccessMessage(null);
+    setGlobalExportError(null); // Clear export error
 
     console.log(`Attempting to pause job for batch: ${batchId} with execution ID: ${executionId}`);
 
@@ -228,12 +238,14 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
   const handleDeleteBatch = (id: string) => {
     setBatchToDeleteId(id);
     setIsDeleteDialogOpen(true);
+    setGlobalExportError(null); // Clear export error
   };
 
   const confirmDeleteBatch = async () => {
     if (!batchToDeleteId) return;
     setError(null);
     setSuccessMessage(null);
+    setGlobalExportError(null); // Clear export error
     try {
       // Attempt to delete associated CPF records first (optional, depends on CASCADE)
       // const { error: cpfDeleteError } = await supabase
@@ -274,8 +286,106 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
     } catch (e) { return 'Data inválida'; }
   };
 
+  // --- START GLOBAL EXPORT FUNCTION ---
+  const handleGlobalExport = async () => {
+    setIsGlobalExporting(true);
+    setGlobalExportError(null);
+    setError(null); // Clear other errors
+    setSuccessMessage(null);
+
+    console.warn("[PERFORMANCE] Iniciando exportação global. Buscar e processar todos os registros de CPF pode levar muito tempo ou travar o navegador se houver muitos dados.");
+
+    try {
+        // 1. Fetch ALL CPF records (respects RLS)
+        // Note: This fetches everything into memory. Consider server-side export or pagination for very large datasets.
+        const { data: allCpfRecords, error: fetchError } = await supabase
+            .from('cpf_records')
+            .select('*'); // Select all columns
+
+        if (fetchError) {
+            console.error("Error fetching all CPF records:", fetchError);
+            throw new Error(`Falha ao buscar registros de CPF: ${fetchError.message}`);
+        }
+
+        if (!allCpfRecords || allCpfRecords.length === 0) {
+            setGlobalExportError("Nenhum registro de CPF encontrado para exportar.");
+            setIsGlobalExporting(false);
+            return;
+        }
+
+        console.log(`[DEBUG] Fetched ${allCpfRecords.length} total CPF records for global export.`);
+
+        // 2. Prepare data for the sheet
+        const dataToExport = allCpfRecords.map((record: CPFRecord) => { // Use CPFRecord type
+            let banco = '-';
+            let valorLiberado = '-';
+            let codigo = '-';
+            let parsedResult: any = null;
+
+            if (record.result) {
+                if (typeof record.result === 'string') {
+                    try { parsedResult = JSON.parse(record.result); } catch (e) { console.error(`Parse error for CPF ${record.cpf}:`, e); }
+                } else if (typeof record.result === 'object') {
+                    parsedResult = record.result;
+                }
+            }
+
+            if (parsedResult?.body && typeof parsedResult.body === 'object') {
+                banco = parsedResult.body.banco || '-';
+                valorLiberado = parsedResult.body.valorliberado || '-';
+                codigo = parsedResult.body.codigo || '-';
+            }
+
+            return {
+                'CPF': formatCPF(record.cpf),
+                'Nome': record.nome,
+                'Telefone': record.telefone || '-',
+                'Banco': banco,
+                'Valor Liberado': valorLiberado,
+                'Código': codigo,
+                'Status Processamento': record.status,
+                'Data Atualização': formatDate(record.updated_at),
+                'ID Lote': record.batch_id, // Optionally include batch_id
+            };
+        });
+
+        // 3. Create worksheet and workbook
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, `Todos os Registros`);
+
+        // Set column widths
+        worksheet['!cols'] = [
+            { wch: 18 }, // CPF
+            { wch: 30 }, // Nome
+            { wch: 15 }, // Telefone
+            { wch: 20 }, // Banco
+            { wch: 15 }, // Valor Liberado
+            { wch: 10 }, // Código
+            { wch: 20 }, // Status Processamento
+            { wch: 20 }, // Data Atualização
+            { wch: 38 }, // ID Lote
+        ];
+
+        // 4. Generate and trigger download
+        const filename = `exportacao_global_cpfs_${new Date().toISOString().split('T')[0]}.xlsx`;
+        XLSX.writeFile(workbook, filename);
+        setSuccessMessage(`Exportação global de ${allCpfRecords.length} registros concluída.`);
+
+    } catch (err: any) {
+        console.error("Error during global export:", err);
+        setGlobalExportError(`Erro na exportação global: ${err.message || 'Erro desconhecido'}`);
+    } finally {
+        setIsGlobalExporting(false);
+    }
+  };
+  // --- END GLOBAL EXPORT FUNCTION ---
+
+
   // Determine if actions should be disabled (DB issues, loading, or not authenticated)
   const actionsDisabled = isLoading || !dbStatus?.connected || !dbStatus.tables?.batches.exists || !session;
+  // Disable global export if DB is not ready or already exporting
+  const globalExportDisabled = actionsDisabled || isGlobalExporting || !dbStatus?.tables?.cpf_records.exists;
 
   return (
     <div className="space-y-8"> {/* Increased spacing */}
@@ -288,18 +398,33 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
             <List className="mr-3 h-6 w-6 text-primary-light dark:text-primary-dark" /> {/* Increased margin */}
             Lotes de Processamento
           </h1>
-          <button
-            onClick={fetchBatches}
-            disabled={actionsDisabled} // Disable if loading or DB issues
-            className="px-4 py-2 bg-primary-light dark:bg-primary-dark text-white rounded-lg font-medium text-sm hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 dark:focus:ring-offset-background-dark flex items-center disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out shadow-sm hover:shadow-md" // Adjusted styling
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
-            {isLoading ? 'Atualizando...' : 'Atualizar'}
-          </button>
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row gap-3">
+              {/* Global Export Button */}
+              <button
+                onClick={handleGlobalExport}
+                disabled={globalExportDisabled}
+                className="px-4 py-2 bg-green-600 dark:bg-green-700 text-white rounded-lg font-medium text-sm hover:bg-green-700 dark:hover:bg-green-800 focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-green-600 focus:ring-offset-2 dark:focus:ring-offset-background-dark flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out shadow-sm hover:shadow-md"
+                title={!dbStatus?.tables?.cpf_records.exists ? "Tabela 'cpf_records' não acessível" : "Exportar todos os registros de CPF (pode ser lento)"}
+              >
+                <Download className={`h-4 w-4 mr-2 ${isGlobalExporting ? 'animate-spin' : ''}`} />
+                {isGlobalExporting ? 'Exportando...' : 'Exportar Todos (Excel)'}
+              </button>
+              {/* Refresh Button */}
+              <button
+                onClick={fetchBatches}
+                disabled={actionsDisabled || isGlobalExporting} // Also disable refresh during global export
+                className="px-4 py-2 bg-primary-light dark:bg-primary-dark text-white rounded-lg font-medium text-sm hover:bg-primary-hover-light dark:hover:bg-primary-hover-dark focus:outline-none focus:ring-2 focus:ring-primary-light dark:focus:ring-primary-dark focus:ring-offset-2 dark:focus:ring-offset-background-dark flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 ease-in-out shadow-sm hover:shadow-md" // Adjusted styling
+              >
+                <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+                {isLoading ? 'Atualizando...' : 'Atualizar'}
+              </button>
+          </div>
         </div>
 
         {/* Display action feedback messages */}
         {error && <Alert type="error" message={error} />}
+        {globalExportError && <Alert type="error" message={globalExportError} />} {/* Show global export error */}
         {successMessage && <Alert type="success" message={successMessage} />}
 
 
@@ -369,7 +494,8 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
                        {/* View Details Button */}
                        <button
                          onClick={() => onViewDetails(batch.id)}
-                         className="p-1.5 rounded-md text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900/50 focus:outline-none transition-colors" // Added padding, hover bg
+                         disabled={isGlobalExporting} // Disable during global export
+                         className="p-1.5 rounded-md text-blue-600 hover:bg-blue-100 dark:text-blue-400 dark:hover:bg-blue-900/50 focus:outline-none transition-colors disabled:opacity-50" // Added padding, hover bg
                          title="Visualizar detalhes"
                        >
                          <Eye className="h-5 w-5" />
@@ -378,7 +504,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
                       {batch.status === 'Pendente' || batch.status === 'Pausado' ? (
                         <button
                           onClick={() => handleStartJob(batch.id)}
-                          disabled={startingJobId === batch.id || pausingJobId === batch.id || actionsDisabled} // Disable if starting, pausing or general actions disabled
+                          disabled={startingJobId === batch.id || pausingJobId === batch.id || actionsDisabled || isGlobalExporting} // Disable if starting, pausing or general actions disabled or global export
                           className="p-1.5 rounded-md text-green-600 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900/50 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-wait" // Added padding, hover bg
                           title="Iniciar processamento"
                         >
@@ -387,7 +513,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
                       ) : batch.status === 'Em execução' ? (
                         <button
                             onClick={() => handlePauseBatch(batch.id, batch.id_execucao)}
-                            disabled={pausingJobId === batch.id || startingJobId === batch.id || !batch.id_execucao || actionsDisabled} // Disable if pausing, starting, no execution ID or general actions disabled
+                            disabled={pausingJobId === batch.id || startingJobId === batch.id || !batch.id_execucao || actionsDisabled || isGlobalExporting} // Disable if pausing, starting, no execution ID or general actions disabled or global export
                             className="p-1.5 rounded-md text-yellow-600 hover:bg-yellow-100 dark:text-yellow-400 dark:hover:bg-yellow-900/50 focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-wait" // Added padding, hover bg
                             title={!batch.id_execucao ? "ID de execução não disponível para pausar" : "Pausar processamento"}
                         >
@@ -397,7 +523,7 @@ const BatchesPage: React.FC<BatchesPageProps> = ({ onViewDetails }) => {
                       {/* Delete Button */}
                       <button
                         onClick={() => handleDeleteBatch(batch.id)}
-                        disabled={startingJobId === batch.id || pausingJobId === batch.id || actionsDisabled} // Disable if any action is in progress or general actions disabled
+                        disabled={startingJobId === batch.id || pausingJobId === batch.id || actionsDisabled || isGlobalExporting} // Disable if any action is in progress or general actions disabled or global export
                         className="p-1.5 rounded-md text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900/50 focus:outline-none transition-colors disabled:opacity-50" // Added padding, hover bg
                         title="Excluir lote"
                       >
