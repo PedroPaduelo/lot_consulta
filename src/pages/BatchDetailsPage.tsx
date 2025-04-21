@@ -20,6 +20,14 @@ export interface DisplayCPFRecord extends DbCPFRecord { // Export if needed else
 
 // Define possible statuses for filtering export
 type CPFStatusFilter = DbCPFRecord['status'] | 'all';
+// Define possible values for the 'codigo' filter
+type CodigoFilter = 'all' | 'sim' | 'nao_sim';
+
+// Define the combined filter type
+interface ExportFilters {
+    status: CPFStatusFilter;
+    codigo: CodigoFilter;
+}
 
 interface BatchDetailsPageProps {
   batchId: string;
@@ -204,53 +212,69 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
   };
 
   // --- START UPDATED EXPORT FUNCTION ---
-  const handleExportExcel = (filters: { status: CPFStatusFilter }) => {
+  const handleExportExcel = (filters: ExportFilters) => { // Updated filter type
     setIsExporting(true);
     setExportError(null);
 
     try {
-      // 1. Apply status filters
-      let recordsToExport = cpfRecords;
+      // 1. Apply status filter first
+      let filteredRecords = cpfRecords;
       if (filters.status !== 'all') {
-        recordsToExport = cpfRecords.filter(record => record.status === filters.status);
+        filteredRecords = cpfRecords.filter(record => record.status === filters.status);
       }
 
-      if (recordsToExport.length === 0) {
-        setExportError(`Nenhum registro encontrado com o status '${filters.status}' para exportar.`);
+      // 2. Apply codigo filter
+      if (filters.codigo !== 'all') {
+        filteredRecords = filteredRecords.filter(record => {
+          let codigoValue: string | null = null;
+          // Safely parse result and get codigo
+          if (record.result) {
+            let parsedResult: any = null;
+            if (typeof record.result === 'string') {
+              try { parsedResult = JSON.parse(record.result); } catch { /* ignore */ }
+            } else if (typeof record.result === 'object') {
+              parsedResult = record.result;
+            }
+            if (parsedResult?.body?.codigo) {
+              codigoValue = String(parsedResult.body.codigo); // Ensure it's a string
+            }
+          }
+          // Apply filter logic
+          if (filters.codigo === 'sim') {
+            return codigoValue === 'SIM';
+          } else if (filters.codigo === 'nao_sim') {
+            return codigoValue !== 'SIM'; // Includes null, undefined, empty, or different strings
+          }
+          return true; // Should not happen if filter is 'sim' or 'nao_sim'
+        });
+      }
+
+      // Check if any records remain after filtering
+      if (filteredRecords.length === 0) {
+        setExportError(`Nenhum registro encontrado com os filtros selecionados (Status: ${filters.status}, Código: ${filters.codigo}).`);
         setIsExporting(false);
         return;
       }
 
-      // 2. Prepare data for the sheet, parsing the 'result' JSON
-      const dataToExport = recordsToExport.map(record => {
+      // 3. Prepare data for the sheet
+      const dataToExport = filteredRecords.map(record => {
         let banco = '-';
         let valorLiberado = '-';
-        let codigo = '-'; // Added codigo field
+        let codigo = '-';
         let parsedResult: any = null;
 
-        // Safely parse result JSON string or use if already object
         if (record.result) {
           if (typeof record.result === 'string') {
-            try {
-              parsedResult = JSON.parse(record.result);
-            } catch (parseError) {
-              console.error(`Error parsing result string for CPF ${record.cpf}:`, parseError);
-              // Keep default values if parsing fails
-            }
+            try { parsedResult = JSON.parse(record.result); } catch (e) { console.error(`Parse error for CPF ${record.cpf}:`, e); }
           } else if (typeof record.result === 'object') {
-            // Handle case where result might already be an object
             parsedResult = record.result;
           }
         }
 
-        // Extract data from the parsed 'body' if available
-        if (parsedResult && parsedResult.body && typeof parsedResult.body === 'object') {
+        if (parsedResult?.body && typeof parsedResult.body === 'object') {
           banco = parsedResult.body.banco || '-';
           valorLiberado = parsedResult.body.valorliberado || '-';
-          codigo = parsedResult.body.codigo || '-'; // Extract codigo
-          console.log(`[Export] CPF: ${record.cpf}, Banco: ${banco}, Valor Liberado: ${valorLiberado}, Código: ${codigo}`); // Debug log
-        } else {
-            console.warn(`[Export] Result body not found or not an object for CPF ${record.cpf}. Result:`, record.result); // Debug log
+          codigo = parsedResult.body.codigo || '-';
         }
 
         return {
@@ -259,31 +283,31 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
           'Telefone': record.telefone || '-',
           'Banco': banco,
           'Valor Liberado': valorLiberado,
-          'Código': codigo, // Added Código column
+          'Código': codigo,
           'Status Processamento': record.status,
           'Data Atualização': formatDate(record.updated_at),
         };
       });
 
-      // 3. Create worksheet and workbook
+      // 4. Create worksheet and workbook
       const worksheet = XLSX.utils.json_to_sheet(dataToExport);
       const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, `Registros (${filters.status})`);
+      XLSX.utils.book_append_sheet(workbook, worksheet, `Registros`); // Simplified sheet name
 
-      // Set column widths (adjust as needed)
+      // Set column widths
       worksheet['!cols'] = [
         { wch: 18 }, // CPF
         { wch: 30 }, // Nome
         { wch: 15 }, // Telefone
         { wch: 20 }, // Banco
         { wch: 15 }, // Valor Liberado
-        { wch: 10 }, // Código (New)
+        { wch: 10 }, // Código
         { wch: 20 }, // Status Processamento
         { wch: 20 }, // Data Atualização
       ];
 
-      // 4. Generate and trigger download
-      const filename = `lote_${batch?.name || batchId.substring(0,8)}_status_${filters.status}.xlsx`;
+      // 5. Generate and trigger download
+      const filename = `lote_${batch?.name || batchId.substring(0,8)}_filtros_${filters.status}_${filters.codigo}.xlsx`;
       XLSX.writeFile(workbook, filename);
       setIsExportModalOpen(false); // Close modal on successful export
 
