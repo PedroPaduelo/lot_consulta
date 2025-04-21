@@ -227,25 +227,28 @@ const BatchDetailsPage: React.FC<BatchDetailsPageProps> = ({ batchId, onBack }) 
         let valorLiberado = '-'; // Changed from valorLiquido to valorLiberado
         let parsedResult: any = null;
 
-        // Safely parse result JSON string
-        if (record.result && typeof record.result === 'string') {
-          try {
-            parsedResult = JSON.parse(record.result);
-          } catch (parseError) {
-            console.error(`Error parsing result string for CPF ${record.cpf}:`, parseError);
-            // Keep default values if parsing fails
-          }
-        } else if (record.result && typeof record.result === 'object') {
-            // Handle case where result might already be an object (less likely if stored as JSON string)
+        // Safely parse result JSON string or use if already object
+        if (record.result) {
+          if (typeof record.result === 'string') {
+            try {
+              parsedResult = JSON.parse(record.result);
+            } catch (parseError) {
+              console.error(`Error parsing result string for CPF ${record.cpf}:`, parseError);
+              // Keep default values if parsing fails
+            }
+          } else if (typeof record.result === 'object') {
+            // Handle case where result might already be an object
             parsedResult = record.result;
+          }
         }
 
         // Extract data from the parsed 'body' if available
         if (parsedResult && parsedResult.body && typeof parsedResult.body === 'object') {
           banco = parsedResult.body.banco || '-';
           valorLiberado = parsedResult.body.valorliberado || '-'; // Use valorliberado
+          console.log(`[Export] CPF: ${record.cpf}, Banco: ${banco}, Valor Liberado: ${valorLiberado}`); // Debug log
         } else {
-            console.warn(`Result body not found or not an object for CPF ${record.cpf}`);
+            console.warn(`[Export] Result body not found or not an object for CPF ${record.cpf}. Result:`, record.result); // Debug log
         }
 
         return {
